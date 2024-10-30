@@ -1,25 +1,25 @@
-use std::{
-    io::{prelude::*, BufReader},
-    net::{TcpListener, TcpStream},
-};
+use actix_web::{web, App, HttpServer, Responder};
+mod routes;
 
-fn main() {
-    let listener = TcpListener::bind("127.0.0.1:7878").expect("Could not bind to address");
-
-    for stream in listener.incoming() {
-        let stream = stream.expect("Stream failed to open");
-
-        handle_connection(stream);
-    }
+async fn index() -> impl Responder {
+    "Hello world!"
 }
 
-fn handle_connection(mut stream: TcpStream) {
-    let buf_reader = BufReader::new(&mut stream);
-    let http_request: Vec<_> = buf_reader
-        .lines()
-        .map(|result| result.unwrap())
-        .take_while(|line| !line.is_empty())
-        .collect();
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
+    HttpServer::new(|| {
+        App::new().service(
+            // prefixes all resources and routes attached to it...
+            web::scope("/")
+                .route("/index.html", web::get().to(index))
+                .service(
+                    web::scope("/accounts")
+                    .route("/create", web::post().to(routes::account::create_account))
+                ),
+        )
+    })
+    .bind(("127.0.0.1", 8080))?
+    .run()
+    .await
 
-    println!("Request: {:#?}", http_request);
 }
