@@ -6,11 +6,7 @@ use crate::models::user::UserTraveler;
 
 // Sign up for an account
 pub async fn create_account(data: web::Data<Arc<Client>>, input: web::Json<UserTraveler>) -> impl Responder {
-    println!("Creating account");
-    println!("Data: {:?}", data);
-
     let client = data.into_inner(); // Get the client from App::data()
-    
 
     let collection = client
         .database("Travelers")
@@ -22,18 +18,9 @@ pub async fn create_account(data: web::Data<Arc<Client>>, input: web::Json<UserT
     doc.created_at = Some(curr_time);
     doc.updated_at = Some(curr_time);
 
-    // println!("Creating account: {:?}", doc);
-    dbg!(&doc);
-    
     match collection.insert_one(doc).await {
         Ok(result) => {
-            // Insertion successful
-            if let mongodb::results::InsertOneResult { inserted_id: _, .. } = result {
-                HttpResponse::Ok().body("Account successfully created.")
-            } else {
-                // This shouldn't happen, but handle it just in case
-                HttpResponse::InternalServerError().body("Failed to create account.") 
-            }
+            HttpResponse::Ok().body("Account successfully created.")
         }
         Err(err) => {
             // Error during insertion
