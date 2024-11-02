@@ -1,23 +1,44 @@
-use actix_web::{post, web, HttpResponse, Responder};
-use mongodb::Database;
+use actix_web::{web, HttpResponse, Responder};
+use mongodb::Client;
+use std::sync::Arc;
 
-use crate::{
-    models::Account,
-    services::account_service,
-};
+use crate::models::user::UserTraveler;
 
-#[post("/accounts")]
-pub async fn create_account(
-    db: web::Data<Database>,
-    account: web::Json<Account>,
-) -> impl Responder {
-    let accounts_collection = db::mongo::get_accounts_collection(&db);
-    match account_service::create_account(&accounts_collection, &account).await {
-        Ok(new_account) => HttpResponse::Created().json(new_account),
+// Sign up for an account
+pub async fn create_account(data: web::Data<Arc<Client>>, input: web::Json<UserTraveler>) -> impl Responder {
+    println!("Creating account");
+    println!("Data: {:?}", data);
+
+    let client = data.into_inner(); // Get the client from App::data()
+    
+
+    let collection = client
+        .database("Travelers")
+        .collection("User");
+
+    let curr_time = chrono::Utc::now();
+    
+    let mut doc = input.into_inner();
+    doc.created_at = Some(curr_time);
+    doc.updated_at = Some(curr_time);
+
+    // println!("Creating account: {:?}", doc);
+    dbg!(&doc);
+    
+    match collection.insert_one(doc).await {
+        Ok(result) => {
+            // Insertion successful
+            if let mongodb::results::InsertOneResult { inserted_id: _, .. } = result {
+                HttpResponse::Ok().body("Account successfully created.")
+            } else {
+                // This shouldn't happen, but handle it just in case
+                HttpResponse::InternalServerError().body("Failed to create account.") 
+            }
+        }
         Err(err) => {
-            eprintln!("Error creating account: {:?}", err);
-            // More specific error handling based on err type (e.g., duplicate key)
-            HttpResponse::InternalServerError().body(format!("Error creating account: {:?}", err))
+            // Error during insertion
+            eprintln!("Failed to insert document: {:?}", err); // Log the error
+            HttpResponse::InternalServerError().body("Failed to create account.")
         }
     }
 }
