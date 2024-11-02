@@ -5,6 +5,9 @@ mod routes;
 mod db;
 mod models;
 
+const HOST: &str = "0.0.0.0";
+const PORT: u16 = 8080;
+
 async fn index() -> impl Responder {
     "Hello world!"
 }
@@ -19,6 +22,10 @@ async fn main() -> std::io::Result<()> {
     } else {
         println!("Release mode");
     }
+    // Get host and port from env vars
+    let host = std::env::var("HOST").unwrap_or_else(|_| HOST.to_string());
+    let port: u16 = std::env::var("PORT").unwrap_or_else(|_| PORT.to_string())
+        .parse().unwrap_or(PORT);
     
     // Check mongodb connection
     let mongo_uri = std::env::var("MONGODB_URI").expect("MONGODB_URI must be set"); 
@@ -33,11 +40,12 @@ async fn main() -> std::io::Result<()> {
                 .route("/index.html", web::get().to(index))
                 .service(
                     web::scope("/accounts")
-                    .route("/create", web::post().to(routes::account::create_account))
+                    .route("/create", web::post().to(routes::account::signup))
+                    .route("/signin", web::post().to(routes::account::signin))
                 ),
         )
     })
-    .bind(("127.0.0.1", 8080))?
+    .bind((host, port))?
     .run()
     .await
 
