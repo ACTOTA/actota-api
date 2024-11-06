@@ -1,5 +1,5 @@
 use actix_web::{web, HttpResponse, Responder};
-use bcrypt::verify;
+// use bcrypt::verify;
 use mongodb::Client;
 use mongodb::bson::doc;
 use std::sync::Arc;
@@ -36,7 +36,7 @@ pub async fn signup(data: web::Data<Arc<Client>>, input: web::Json<UserTraveler>
 
 // Sign in to an account
 pub async fn signin(data: web::Data<Arc<Client>>, input: web::Json<UserTraveler>) -> impl Responder {
-    let client = data.into_inner(); // Get the client from App::data()
+    let client = data.into_inner();
 
     let collection: mongodb::Collection<UserTraveler> = client
         .database("Travelers")
@@ -44,56 +44,56 @@ pub async fn signin(data: web::Data<Arc<Client>>, input: web::Json<UserTraveler>
 
     let doc = input.into_inner();
     let email = doc.email;
-    // This should be hashed
-    // We will implement hashing after initial testing
-    let password: String = doc.password;
+    let password = doc.password; // No need for type annotation here
 
-    let filter = doc! { "email": email };
-    let user: Option<_> = match collection.find_one(filter).await {
-        Ok(user) => user,
-        Err(err) => {
-            eprintln!("Failed to find document: {:?}", err); // Log the error
-            return HttpResponse::InternalServerError().body("Failed to sign in.");
-        }
-    };
- 
-    let doc;
-    match verify(password, &user.as_ref().unwrap().password) {
-        Ok(true) => {
-            // Password is correct
-            // Update last_signin and last_signin_ip
-            let curr_time: String = Utc::now().to_string();
-            doc = doc! {
-                "$set": {
-                    "last_signin": curr_time,
-                    "failed_signins": 0
+    let filter = doc! { "email": &email};
+    println!("Filter: {:?}", filter);
+
+    match collection.find_one(filter).await {
+        Ok(Some(user)) => { // Check if a user was found
+            if password == user.password {
+                // Password is correct
+                let curr_time: String = Utc::now().to_string();
+                let update = doc! {
+                    "$set": {
+                        "last_signin": curr_time,
+                        "failed_signins": 0
+                    }
+                };
+
+                // Update the user document (replace with your actual update logic)
+                match collection.update_one(doc! { "email": &email }, update).await {
+                    Ok(_) => HttpResponse::Ok().body("Account successfully signed in."),
+                    Err(err) => {
+                        eprintln!("Failed to update document: {:?}", err);
+                        HttpResponse::InternalServerError().body("Failed to sign in.")
+                    }
                 }
-            };
-        },
-        Ok(false) => {
-            // Password is incorrect
-            // Increment failed_signins
-            let failed_signins = user.unwrap().failed_signins.unwrap_or(0) + 1;
-            doc = doc! {
-                "$set": {
-                    "failed_signins": failed_signins
+            } else {
+                // Password is incorrect
+                let failed_signins = user.failed_signins.unwrap_or(0) + 1;
+                let update = doc! {
+                    "$set": {
+                        "failed_signins": failed_signins
+                    }
+                };
+
+                // Update the user document (replace with your actual update logic)
+                match collection.update_one(doc! { "email": email }, update).await {
+                    Ok(_) => HttpResponse::Ok().body("Incorrect password."),
+                    Err(err) => {
+                        eprintln!("Failed to update document: {:?}", err);
+                        HttpResponse::InternalServerError().body("Failed to sign in.")
+                    }
                 }
-            };
-        },
-        Err(err) => {
-            eprintln!("Failed to verify password: {:?}", err); // Log the error
-            return HttpResponse::InternalServerError().body("Failed to sign in.");
+            }
         }
-    }
-
-
-    match collection.find_one(doc).await {
-        Ok(_) => {
-            HttpResponse::Ok().body("Account successfully signed in.")
+        Ok(None) => {
+            // No user found with that email
+            HttpResponse::NotFound().body("User not found.")
         }
         Err(err) => {
-            // Error during insertion
-            eprintln!("Failed to find document: {:?}", err); // Log the error
+            eprintln!("Failed to find document: {:?}", err);
             HttpResponse::InternalServerError().body("Failed to sign in.")
         }
     }
