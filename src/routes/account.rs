@@ -1,11 +1,26 @@
 use actix_web::{web, HttpResponse, Responder};
+// use dotenv::dotenv;
 // use bcrypt::verify;
 use mongodb::Client;
 use mongodb::bson::doc;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use chrono::Utc;
+use jsonwebtoken::{encode, EncodingKey, Header};
+
 
 use crate::models::user::UserTraveler;
+
+#[derive(Serialize, Deserialize)]
+struct TokenResponse {
+    auth_token: String,
+}
+
+#[derive(Serialize, Deserialize)]
+struct Claims {
+    sub: String,
+    exp: u32
+}
 
 // Sign up for an account
 pub async fn signup(data: web::Data<Arc<Client>>, input: web::Json<UserTraveler>) -> impl Responder {
@@ -63,7 +78,16 @@ pub async fn signin(data: web::Data<Arc<Client>>, input: web::Json<UserTraveler>
 
                 // Update the user document (replace with your actual update logic)
                 match collection.update_one(doc! { "email": &email }, update).await {
-                    Ok(_) => HttpResponse::Ok().body("Account successfully signed in."),
+                    Ok(_) => {
+
+                        let token = get_jwt_token(email);
+                        let response = TokenResponse {
+                            auth_token: token,
+                        };
+
+                        HttpResponse::Ok().json(response)
+                        // HttpResponse::Ok().json({ "authToken": token })
+                    },
                     Err(err) => {
                         eprintln!("Failed to update document: {:?}", err);
                         HttpResponse::InternalServerError().body("Failed to sign in.")
@@ -97,4 +121,26 @@ pub async fn signin(data: web::Data<Arc<Client>>, input: web::Json<UserTraveler>
             HttpResponse::InternalServerError().body("Failed to sign in.")
         }
     }
+}
+
+// Provide jwt token
+fn get_jwt_token(email: String) -> String {
+    if cfg!(debug_assertions) {
+        dotenv::dotenv().ok();
+    }
+
+    let secret = std::env::var("JWT_SECRET").expect("JWT_SECRET must be set");
+    let now = Utc::now().timestamp();
+    let claims = Claims {
+        sub: email,
+        exp: now as u32 + (60 * 60) // 1 hour
+    };
+
+    let token = encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret(secret.as_ref()),
+    );
+
+    token.unwrap()
 }
