@@ -9,7 +9,7 @@ use chrono::Utc;
 use jsonwebtoken::{encode, EncodingKey, Header};
 
 
-use crate::models::user::UserTraveler;
+use crate::models::{self, user::UserTraveler};
 
 #[derive(Serialize, Deserialize)]
 struct TokenResponse {
@@ -26,7 +26,7 @@ struct Claims {
 pub async fn signup(data: web::Data<Arc<Client>>, input: web::Json<UserTraveler>) -> impl Responder {
     let client = data.into_inner(); // Get the client from App::data()
 
-    let collection = client
+    let collection: mongodb::Collection<models::user::UserTraveler> = client
         .database("Travelers")
         .collection("User");
 
@@ -36,9 +36,13 @@ pub async fn signup(data: web::Data<Arc<Client>>, input: web::Json<UserTraveler>
     doc.created_at = Some(curr_time);
     doc.updated_at = Some(curr_time);
 
-    match collection.insert_one(doc).await {
+    match collection.insert_one(&doc).await {
         Ok(_) => {
-            HttpResponse::Ok().body("Account successfully created.")
+            let token = get_jwt_token(doc.email);
+            let response = TokenResponse {
+                auth_token: token,
+            };
+            HttpResponse::Ok().json(response)
         }
         Err(err) => {
             // Error during insertion
