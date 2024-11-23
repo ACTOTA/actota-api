@@ -2,6 +2,7 @@ use actix_web::{middleware::Logger, web, App, HttpServer};
 use env_logger::Env;
 
 mod db;
+mod middleware;
 mod models;
 mod routes;
 
@@ -35,11 +36,12 @@ async fn main() -> std::io::Result<()> {
             .wrap(Logger::default())
             .app_data(web::Data::new(client.clone())) // Clone the client to pass to each route
             .service(
-                web::scope("/api")
+                web::scope("/api/auth")
                     .route("/signup", web::post().to(routes::account::signup))
                     .route("/signin", web::post().to(routes::account::signin))
                     .service(web::scope("/accounts")),
             )
+            .service(web::scope("/api").wrap(middleware::auth::AuthMiddleware))
     })
     .bind((host, port))?
     .run()
