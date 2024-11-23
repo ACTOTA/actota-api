@@ -1,150 +1,129 @@
 use actix_web::{web, HttpResponse, Responder};
-// use dotenv::dotenv;
-// use bcrypt::verify;
-use mongodb::Client;
+use chrono::{Duration, Utc};
+use jsonwebtoken::{encode, EncodingKey, Header};
 use mongodb::bson::doc;
+use mongodb::Client;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use chrono::Utc;
-use jsonwebtoken::{encode, EncodingKey, Header};
 
+use crate::middleware::auth::Claims;
+use crate::models::user::UserTraveler;
 
-use crate::models::{self, user::UserTraveler};
-
-#[derive(Serialize, Deserialize)]
-struct TokenResponse {
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TokenResponse {
     auth_token: String,
 }
 
-#[derive(Serialize, Deserialize)]
-struct Claims {
-    sub: String,
-    exp: u32
-}
+pub async fn signup(
+    data: web::Data<Arc<Client>>,
+    input: web::Json<UserTraveler>,
+) -> impl Responder {
+    let client = data.into_inner();
+    let collection: mongodb::Collection<UserTraveler> =
+        client.database("Travelers").collection("User");
 
-// Sign up for an account
-pub async fn signup(data: web::Data<Arc<Client>>, input: web::Json<UserTraveler>) -> impl Responder {
-    let client = data.into_inner(); // Get the client from App::data()
-
-    let collection: mongodb::Collection<models::user::UserTraveler> = client
-        .database("Travelers")
-        .collection("User");
-
-    let curr_time = chrono::Utc::now();
-
+    let curr_time = Utc::now();
     let mut doc = input.into_inner();
     doc.created_at = Some(curr_time);
     doc.updated_at = Some(curr_time);
 
     match collection.insert_one(&doc).await {
-        Ok(_) => {
-            let token = get_jwt_token(doc.email);
-            let response = TokenResponse {
-                auth_token: token,
-            };
-            HttpResponse::Ok().json(response)
-        }
+        Ok(result) => match generate_token(&doc.email, &result.inserted_id.to_string()) {
+            Ok(token) => HttpResponse::Ok().json(TokenResponse { auth_token: token }),
+            Err(_) => HttpResponse::InternalServerError().body("Token generation failed"),
+        },
         Err(err) => {
-            // Error during insertion
-            eprintln!("Failed to insert document: {:?}", err); // Log the error
+            eprintln!("Failed to insert document: {:?}", err);
             HttpResponse::InternalServerError().body("Failed to create account.")
         }
     }
 }
 
-
-// Sign in to an account
-pub async fn signin(data: web::Data<Arc<Client>>, input: web::Json<UserTraveler>) -> impl Responder {
+pub async fn signin(
+    data: web::Data<Arc<Client>>,
+    input: web::Json<UserTraveler>,
+) -> impl Responder {
     let client = data.into_inner();
-
-    let collection: mongodb::Collection<UserTraveler> = client
-        .database("Travelers")
-        .collection("User");
+    let collection: mongodb::Collection<UserTraveler> =
+        client.database("Travelers").collection("User");
 
     let doc = input.into_inner();
     let email = doc.email;
-    let password = doc.password; // No need for type annotation here
+    let password = doc.password;
 
-    let filter = doc! { "email": &email};
-    println!("Filter: {:?}", filter);
+    let filter = doc! { "email": &email };
 
     match collection.find_one(filter).await {
-        Ok(Some(user)) => { // Check if a user was found
+        Ok(Some(user)) => {
             if password == user.password {
-                // Password is correct
-                let curr_time: String = Utc::now().to_string();
                 let update = doc! {
                     "$set": {
-                        "last_signin": curr_time,
+                        "last_signin": Utc::now().to_string(),
                         "failed_signins": 0
                     }
                 };
 
-                // Update the user document (replace with your actual update logic)
-                match collection.update_one(doc! { "email": &email }, update).await {
+                match collection
+                    .update_one(doc! { "email": &email }, update)
+                    .await
+                {
                     Ok(_) => {
+                        let token =
+                            generate_token(&email, &user.id.expect("No user ID").to_string())
+                                .map_err(|_| {
+                                    HttpResponse::InternalServerError()
+                                        .body("Token generation failed")
+                                });
 
-                        let token = get_jwt_token(email);
-                        let response = TokenResponse {
-                            auth_token: token,
-                        };
-
-                        HttpResponse::Ok().json(response)
-                        // HttpResponse::Ok().json({ "authToken": token })
-                    },
+                        HttpResponse::Ok().json(TokenResponse {
+                            auth_token: token.unwrap(),
+                        })
+                    }
                     Err(err) => {
                         eprintln!("Failed to update document: {:?}", err);
                         HttpResponse::InternalServerError().body("Failed to sign in.")
                     }
                 }
             } else {
-                // Password is incorrect
                 let failed_signins = user.failed_signins.unwrap_or(0) + 1;
                 let update = doc! {
-                    "$set": {
-                        "failed_signins": failed_signins
-                    }
+                    "$set": { "failed_signins": failed_signins }
                 };
 
-                // Update the user document (replace with your actual update logic)
-                match collection.update_one(doc! { "email": email }, update).await {
-                    Ok(_) => HttpResponse::Ok().body("Incorrect password."),
+                match collection
+                    .update_one(doc! { "email": &email }, update)
+                    .await
+                {
+                    Ok(_) => HttpResponse::Unauthorized().body("Invalid credentials"),
                     Err(err) => {
-                        eprintln!("Failed to update document: {:?}", err);
-                        HttpResponse::InternalServerError().body("Failed to sign in.")
+                        eprintln!("Failed to update failed signins: {:?}", err);
+                        HttpResponse::InternalServerError().body("Failed to process signin")
                     }
                 }
             }
         }
-        Ok(None) => {
-            // No user found with that email
-            HttpResponse::NotFound().body("User not found.")
-        }
+        Ok(None) => HttpResponse::NotFound().body("User not found"),
         Err(err) => {
-            eprintln!("Failed to find document: {:?}", err);
-            HttpResponse::InternalServerError().body("Failed to sign in.")
+            eprintln!("Database error: {:?}", err);
+            HttpResponse::InternalServerError().body("Failed to process signin")
         }
     }
 }
 
-// Provide jwt token
-fn get_jwt_token(email: String) -> String {
-    if cfg!(debug_assertions) {
-        dotenv::dotenv().ok();
-    }
-
+fn generate_token(email: &str, user_id: &str) -> Result<String, jsonwebtoken::errors::Error> {
     let secret = std::env::var("JWT_SECRET").expect("JWT_SECRET must be set");
-    let now = Utc::now().timestamp();
+    let now = Utc::now();
+
     let claims = Claims {
-        sub: email,
-        exp: now as u32 + (60 * 60) // 1 hour
+        sub: email.to_string(),
+        iat: now.timestamp() as usize,
+        exp: (now + Duration::hours(24)).timestamp() as usize,
+        user_id: user_id.to_string(),
     };
 
-    let token = encode(
+    encode(
         &Header::default(),
         &claims,
         &EncodingKey::from_secret(secret.as_ref()),
-    );
-
-    token.unwrap()
+    )
 }
