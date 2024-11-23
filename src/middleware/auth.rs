@@ -4,10 +4,10 @@ use actix_web::{
     Error, HttpMessage,
 };
 use futures::future::{ready, LocalBoxFuture, Ready};
-use jsonwebtoken::{decode, DecodingKey, Validation};
+use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Claims {
     pub sub: String,     // subject (email)
     pub exp: usize,      // expiration time
@@ -30,6 +30,7 @@ where
     type Future = Ready<Result<Self::Transform, Self::InitError>>;
 
     fn new_transform(&self, service: S) -> Self::Future {
+        println!("Creating auth middleware");
         ready(Ok(AuthMiddlewareService { service }))
     }
 }
@@ -56,20 +57,28 @@ where
         if let Some(auth_header) = auth_header {
             if let Ok(auth_str) = auth_header.to_str() {
                 if auth_str.starts_with("Bearer ") {
+                    println!("Starts with header: {}", auth_str);
                     let token = &auth_str[7..];
                     let key = std::env::var("JWT_SECRET")
                         .unwrap_or_else(|_| "default_secret".to_string());
 
+                    println!("Key: {}", key);
+                    let mut validation = Validation::new(Algorithm::HS256);
+                    validation.validate_exp = true;
+                    validation.set_required_spec_claims(&["exp", "iat", "sub", "user_id"]);
+
                     match decode::<Claims>(
                         token,
                         &DecodingKey::from_secret(key.as_bytes()),
-                        &Validation::default(),
+                        &validation,
                     ) {
                         Ok(token_data) => {
+                            println!("Token data: {:?}", token_data);
                             req.extensions_mut().insert(token_data.claims);
                             return Box::pin(self.service.call(req));
                         }
-                        Err(_) => {
+                        Err(err) => {
+                            println!("Error decoding token: {:?}", err);
                             return Box::pin(ready(Err(ErrorUnauthorized("Invalid token"))));
                         }
                     }
