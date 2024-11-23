@@ -1,7 +1,8 @@
 use actix_web::{web, HttpResponse, Responder};
 use chrono::{Duration, Utc};
-use jsonwebtoken::{encode, EncodingKey, Header};
+use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
 use mongodb::bson::doc;
+use mongodb::bson::oid::ObjectId;
 use mongodb::Client;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -28,10 +29,12 @@ pub async fn signup(
     doc.updated_at = Some(curr_time);
 
     match collection.insert_one(&doc).await {
-        Ok(result) => match generate_token(&doc.email, &result.inserted_id.to_string()) {
-            Ok(token) => HttpResponse::Ok().json(TokenResponse { auth_token: token }),
-            Err(_) => HttpResponse::InternalServerError().body("Token generation failed"),
-        },
+        Ok(result) => {
+            match generate_token(&doc.email, result.inserted_id.as_object_id().unwrap()) {
+                Ok(token) => HttpResponse::Ok().json(TokenResponse { auth_token: token }),
+                Err(_) => HttpResponse::InternalServerError().body("Token generation failed"),
+            }
+        }
         Err(err) => {
             eprintln!("Failed to insert document: {:?}", err);
             HttpResponse::InternalServerError().body("Failed to create account.")
@@ -69,7 +72,7 @@ pub async fn signin(
                 {
                     Ok(_) => {
                         let token =
-                            generate_token(&email, &user.id.expect("No user ID").to_string())
+                            generate_token(&email, user.id.expect("Unable to read user_id."))
                                 .map_err(|_| {
                                     HttpResponse::InternalServerError()
                                         .body("Token generation failed")
@@ -110,7 +113,7 @@ pub async fn signin(
     }
 }
 
-fn generate_token(email: &str, user_id: &str) -> Result<String, jsonwebtoken::errors::Error> {
+fn generate_token(email: &str, user_id: ObjectId) -> Result<String, jsonwebtoken::errors::Error> {
     let secret = std::env::var("JWT_SECRET").expect("JWT_SECRET must be set");
     let now = Utc::now();
 
@@ -121,9 +124,6 @@ fn generate_token(email: &str, user_id: &str) -> Result<String, jsonwebtoken::er
         user_id: user_id.to_string(),
     };
 
-    encode(
-        &Header::default(),
-        &claims,
-        &EncodingKey::from_secret(secret.as_ref()),
-    )
+    let header = Header::new(Algorithm::HS256);
+    encode(&header, &claims, &EncodingKey::from_secret(secret.as_ref()))
 }
