@@ -30,7 +30,6 @@ where
     type Future = Ready<Result<Self::Transform, Self::InitError>>;
 
     fn new_transform(&self, service: S) -> Self::Future {
-        println!("Creating auth middleware");
         ready(Ok(AuthMiddlewareService { service }))
     }
 }
