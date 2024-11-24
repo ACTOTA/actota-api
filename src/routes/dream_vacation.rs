@@ -3,6 +3,9 @@ use actix_web::{web, HttpResponse, Responder};
 use mongodb::{bson::oid::ObjectId, Client};
 use std::sync::Arc;
 
+/*
+    /api/itineraries/find
+*/
 pub async fn find(
     claims: web::ReqData<Claims>,
     data: web::Data<Arc<Client>>,

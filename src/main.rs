@@ -38,6 +38,11 @@ async fn main() -> std::io::Result<()> {
                     .route("/signup", web::post().to(routes::account::signup))
                     .route("/signin", web::post().to(routes::account::signin)),
             )
+            // Public activities route (moved outside /api scope)
+            .service(
+                web::scope("/api/activities")
+                    .route("/get", web::get().to(routes::activity::get_activities)),
+            )
             // Protected routes
             .service(
                 web::scope("/api")
