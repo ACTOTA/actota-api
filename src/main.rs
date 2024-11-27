@@ -43,6 +43,10 @@ async fn main() -> std::io::Result<()> {
                 web::scope("/api/activities")
                     .route("/get", web::get().to(routes::activity::get_activities)),
             )
+            .service(
+                web::scope("/api/lodging")
+                    .route("/get", web::get().to(routes::lodging::get_lodging)),
+            )
             // Protected routes
             .service(
                 web::scope("/api")
