@@ -53,6 +53,10 @@ async fn main() -> std::io::Result<()> {
                     .wrap(middleware::auth::AuthMiddleware)
                     .service(
                         web::scope("/itineraries")
+                            .route(
+                                "/featured",
+                                web::get().to(routes::featured_vacation::get_all),
+                            )
                             .route("/find", web::post().to(routes::dream_vacation::find)),
                     )
                     .service(web::scope("/accounts")),
