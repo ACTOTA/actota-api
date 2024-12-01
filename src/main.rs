@@ -34,18 +34,25 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(client.clone()))
             // Public routes
             .service(
-                web::scope("/api/auth")
-                    .route("/signup", web::post().to(routes::account::signup))
-                    .route("/signin", web::post().to(routes::account::signin)),
-            )
-            // Public activities route (moved outside /api scope)
-            .service(
-                web::scope("/api/activities")
-                    .route("/get", web::get().to(routes::activity::get_activities)),
-            )
-            .service(
-                web::scope("/api/lodging")
-                    .route("/get", web::get().to(routes::lodging::get_lodging)),
+                // Public activities route (moved outside /api scope)
+                web::scope("/api")
+                    .service(
+                        web::scope("/auth")
+                            .route("/signup", web::post().to(routes::account::signup))
+                            .route("/signin", web::post().to(routes::account::signin)),
+                    )
+                    .service(
+                        web::scope("/activities")
+                            .route("/get", web::get().to(routes::activity::get_activities)),
+                    )
+                    .service(
+                        web::scope("/lodging")
+                            .route("/get", web::get().to(routes::lodging::get_lodging)),
+                    )
+                    .service(web::scope("/api/itineraries").route(
+                        "/featured",
+                        web::get().to(routes::featured_vacation::get_all),
+                    )),
             )
             // Protected routes
             .service(
@@ -53,10 +60,6 @@ async fn main() -> std::io::Result<()> {
                     .wrap(middleware::auth::AuthMiddleware)
                     .service(
                         web::scope("/itineraries")
-                            .route(
-                                "/featured",
-                                web::get().to(routes::featured_vacation::get_all),
-                            )
                             .route("/find", web::post().to(routes::dream_vacation::find)),
                     )
                     .service(web::scope("/accounts")),
