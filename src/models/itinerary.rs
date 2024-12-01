@@ -23,3 +23,27 @@ pub struct ItinerarySubmission {
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
 }
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct FeaturedVacation {
+    #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
+    pub id: Option<ObjectId>,
+    pub trip_name: String,
+    pub person_cost: f32,
+    pub length_hours: u32,
+    pub start_location: Location,
+    pub activities: Vec<Activity>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct Location {
+    name: String,
+    coordinates: (f32, f32),
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct Activity {
+    time: DateTime<Utc>,
+    location: Location,
+    name: String,
+}
