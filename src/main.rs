@@ -49,7 +49,7 @@ async fn main() -> std::io::Result<()> {
                         web::scope("/lodging")
                             .route("/get", web::get().to(routes::lodging::get_lodging)),
                     )
-                    .service(web::scope("/api/itineraries").route(
+                    .service(web::scope("/itineraries").route(
                         "/featured",
                         web::get().to(routes::featured_vacation::get_all),
                     )),
