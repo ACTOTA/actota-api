@@ -7,6 +7,7 @@ mod db;
 mod middleware;
 mod models;
 mod routes;
+mod services;
 
 const HOST: &str = "0.0.0.0";
 const PORT: u16 = 8080;
@@ -75,6 +76,11 @@ async fn main() -> std::io::Result<()> {
                                         web::post().to(routes::featured_vacation::add),
                                     )
                                     .route("/find", web::post().to(routes::dream_vacation::find)),
+                            )
+                            .service(
+                                web::scope("/itineraries")
+                                    .wrap(middleware::auth::AuthMiddleware)
+                                    .route("/{id}", web::get().to(routes::itinerary::get_by_id)),
                             ),
                     ),
             )
