@@ -16,9 +16,9 @@ pub async fn get_all(data: web::Data<Arc<Client>>) -> impl Responder {
 
     match collection.find(doc! {}).await {
         Ok(cursor) => match cursor.try_collect::<Vec<FeaturedVacation>>().await {
-            Ok(activities) => {
-                let processed_activities = get_images(activities).await;
-                HttpResponse::Ok().json(processed_activities)
+            Ok(vacations) => {
+                let processed_vacations = get_images(vacations).await;
+                HttpResponse::Ok().json(processed_vacations)
             }
             Err(err) => {
                 eprintln!("Failed to collect documents: {:?}", err);

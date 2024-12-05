@@ -75,11 +75,7 @@ async fn main() -> std::io::Result<()> {
                                         "/featured/add",
                                         web::post().to(routes::featured_vacation::add),
                                     )
-                                    .route("/find", web::post().to(routes::dream_vacation::find)),
-                            )
-                            .service(
-                                web::scope("/itineraries")
-                                    .wrap(middleware::auth::AuthMiddleware)
+                                    .route("/find", web::post().to(routes::dream_vacation::find))
                                     .route("/{id}", web::get().to(routes::itinerary::get_by_id)),
                             ),
                     ),

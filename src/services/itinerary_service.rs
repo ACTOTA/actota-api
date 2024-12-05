@@ -6,7 +6,7 @@ use futures::StreamExt;
 use std::env;
 use tokio::pin;
 
-pub async fn get_images(mut activities: Vec<FeaturedVacation>) -> Vec<FeaturedVacation> {
+pub async fn get_images(mut vacations: Vec<FeaturedVacation>) -> Vec<FeaturedVacation> {
     // I have absolutely no idea how I got this to work
     // This is fetching the images from the Google Cloud Storage bucket
     let base_url = env::var("CLOUD_STORAGE_URL").unwrap_or("".to_string());
@@ -14,13 +14,13 @@ pub async fn get_images(mut activities: Vec<FeaturedVacation>) -> Vec<FeaturedVa
 
     let storage_client = StorageClient::default();
 
-    // Create futures for each activity
-    let futures: Vec<_> = activities
+    // Create futures for each vacation
+    let futures: Vec<_> = vacations
         .iter_mut()
-        .map(|activity| async {
+        .map(|vacation| async {
             let list_request = ListRequest {
                 prefix: Some(
-                    activity
+                    vacation
                         .id
                         .unwrap_or(bson::oid::ObjectId::new())
                         .to_string(),
@@ -47,8 +47,8 @@ pub async fn get_images(mut activities: Vec<FeaturedVacation>) -> Vec<FeaturedVa
                 }
             }
 
-            activity.images = Some(files);
-            Ok(activity.clone())
+            vacation.images = Some(files);
+            Ok(vacation.clone())
         })
         .collect();
 
