@@ -30,6 +30,7 @@ pub struct FeaturedVacation {
     pub id: Option<ObjectId>,
     pub trip_name: String,
     pub person_cost: f32,
+    pub length_days: u32,
     pub length_hours: u32,
     pub start_location: Location,
     pub end_location: Location,
