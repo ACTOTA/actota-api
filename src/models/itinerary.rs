@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveTime, Utc};
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 
@@ -24,7 +24,7 @@ pub struct ItinerarySubmission {
     pub updated_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct FeaturedVacation {
     #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
     pub id: Option<ObjectId>,
@@ -32,18 +32,24 @@ pub struct FeaturedVacation {
     pub person_cost: f32,
     pub length_hours: u32,
     pub start_location: Location,
+    pub end_location: Location,
+    pub description: String,
     pub activities: Vec<Activity>,
+    pub images: Option<Vec<String>>,
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-struct Location {
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct Location {
     name: String,
     coordinates: (f32, f32),
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-struct Activity {
-    time: DateTime<Utc>,
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct Activity {
+    time: NaiveTime,
     location: Location,
     name: String,
 }
+
