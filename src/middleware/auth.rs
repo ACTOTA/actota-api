@@ -56,7 +56,6 @@ where
         if let Some(auth_header) = auth_header {
             if let Ok(auth_str) = auth_header.to_str() {
                 if auth_str.starts_with("Bearer ") {
-                    println!("Starts with header: {}", auth_str);
                     let token = &auth_str[7..];
                     let key = std::env::var("JWT_SECRET")
                         .unwrap_or_else(|_| "default_secret".to_string());
@@ -72,7 +71,6 @@ where
                         &validation,
                     ) {
                         Ok(token_data) => {
-                            println!("Token data: {:?}", token_data);
                             req.extensions_mut().insert(token_data.claims);
                             return Box::pin(self.service.call(req));
                         }

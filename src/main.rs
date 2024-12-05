@@ -1,3 +1,5 @@
+use std::{env, path::PathBuf};
+
 use actix_web::{middleware::Logger, web, App, HttpServer};
 use env_logger::Env;
 
@@ -9,8 +11,18 @@ mod routes;
 const HOST: &str = "0.0.0.0";
 const PORT: u16 = 8080;
 
+fn setup_credentials() {
+    let credentials_path = PathBuf::from("credentials/service-account.json");
+    env::set_var(
+        "GOOGLE_APPLICATION_CREDENTIALS",
+        credentials_path.to_str().unwrap(),
+    );
+}
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    setup_credentials();
+
     env_logger::init_from_env(Env::default().default_filter_or("info"));
     if cfg!(debug_assertions) {
         dotenv::dotenv().ok();
@@ -32,10 +44,9 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .wrap(Logger::default())
             .app_data(web::Data::new(client.clone()))
-            // Public routes
             .service(
-                // Public activities route (moved outside /api scope)
                 web::scope("/api")
+                    // Public routes
                     .service(
                         web::scope("/auth")
                             .route("/signup", web::post().to(routes::account::signup))
@@ -49,20 +60,23 @@ async fn main() -> std::io::Result<()> {
                         web::scope("/lodging")
                             .route("/get", web::get().to(routes::lodging::get_lodging)),
                     )
-                    .service(web::scope("/itineraries").route(
-                        "/featured",
-                        web::get().to(routes::featured_vacation::get_all),
-                    )),
-            )
-            // Protected routes
-            .service(
-                web::scope("/api")
-                    .wrap(middleware::auth::AuthMiddleware)
                     .service(
                         web::scope("/itineraries")
-                            .route("/find", web::post().to(routes::dream_vacation::find)),
-                    )
-                    .service(web::scope("/accounts")),
+                            .route(
+                                "/featured",
+                                web::get().to(routes::featured_vacation::get_all),
+                            )
+                            // Protected routes
+                            .service(
+                                web::scope("")
+                                    .wrap(middleware::auth::AuthMiddleware)
+                                    .route(
+                                        "/featured/add",
+                                        web::post().to(routes::featured_vacation::add),
+                                    )
+                                    .route("/find", web::post().to(routes::dream_vacation::find)),
+                            ),
+                    ),
             )
     })
     .bind((host, port))?
