@@ -51,7 +51,13 @@ async fn main() -> std::io::Result<()> {
                     .service(
                         web::scope("/auth")
                             .route("/signup", web::post().to(routes::account::signup))
-                            .route("/signin", web::post().to(routes::account::signin)),
+                            .route("/signin", web::post().to(routes::account::signin))
+                            .service(
+                                web::scope("").wrap(middleware::auth::AuthMiddleware).route(
+                                    "/session",
+                                    web::get().to(routes::account::user_session),
+                                ),
+                            ),
                     )
                     .service(
                         web::scope("/activities")

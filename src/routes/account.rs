@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::middleware::auth::Claims;
-use crate::models::user::UserTraveler;
+use crate::models::user::{UserSession, UserTraveler};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TokenResponse {
@@ -110,6 +110,38 @@ pub async fn signin(
             eprintln!("Database error: {:?}", err);
             HttpResponse::InternalServerError().body("Failed to process signin")
         }
+    }
+}
+
+pub async fn user_session(
+    claims: web::ReqData<Claims>,
+    data: web::Data<Arc<Client>>,
+) -> impl Responder {
+    let client = data.into_inner();
+    let collection: mongodb::Collection<UserTraveler> =
+        client.database("Travelers").collection("User");
+
+    let user_id = ObjectId::parse_str(&claims.user_id)
+        .map_err(|_| HttpResponse::BadRequest().body("Invalid user ID"));
+    match user_id {
+        Ok(user_id) => match collection.find_one(doc! { "_id": user_id }).await {
+            Ok(Some(user)) => {
+                let user_session = UserSession {
+                    id: user.id.unwrap_or_default(),
+                    email: user.email,
+                    first_name: user.first_name.unwrap_or_default(),
+                    last_name: user.last_name.unwrap_or_default(),
+                    created_at: user.created_at.unwrap_or_default(),
+                };
+                HttpResponse::Ok().json(user_session)
+            }
+            Ok(None) => HttpResponse::NotFound().body("User not found"),
+            Err(err) => {
+                eprintln!("Failed to fetch user: {:?}", err);
+                HttpResponse::InternalServerError().body("Failed to fetch user")
+            }
+        },
+        Err(resp) => resp,
     }
 }
 
