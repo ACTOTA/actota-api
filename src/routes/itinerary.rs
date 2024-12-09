@@ -20,7 +20,7 @@ pub async fn get_by_id(id: web::Path<String>, data: web::Data<Arc<Client>>) -> i
     match collection.find_one(doc! { "_id": object_id }).await {
         Ok(Some(doc)) => {
             let processed_doc = get_images(vec![doc.clone()]).await;
-            HttpResponse::Ok().json(processed_doc)
+            HttpResponse::Ok().json(processed_doc[0].clone())
         }
         Ok(None) => HttpResponse::NotFound().body("Itinerary not found"),
         Err(err) => {
