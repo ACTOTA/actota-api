@@ -66,24 +66,30 @@ async fn main() -> std::io::Result<()> {
                             .route(
                                 "/activities",
                                 web::get().to(routes::activity::get_activities),
-                            ),
-                    )
-                    .service(
-                        web::scope("/itineraries")
-                            .route(
-                                "/featured",
-                                web::get().to(routes::featured_vacation::get_all),
                             )
-                            // Protected routes
                             .service(
-                                web::scope("")
-                                    .wrap(middleware::auth::AuthMiddleware)
+                                web::scope("/itineraries")
                                     .route(
-                                        "/featured/add",
-                                        web::post().to(routes::featured_vacation::add),
+                                        "/featured",
+                                        web::get().to(routes::featured_vacation::get_all),
                                     )
-                                    .route("/find", web::post().to(routes::dream_vacation::find))
-                                    .route("/{id}", web::get().to(routes::itinerary::get_by_id)),
+                                    // Protected routes
+                                    .service(
+                                        web::scope("")
+                                            .wrap(middleware::auth::AuthMiddleware)
+                                            .route(
+                                                "/featured/add",
+                                                web::post().to(routes::featured_vacation::add),
+                                            )
+                                            .route(
+                                                "/find",
+                                                web::post().to(routes::dream_vacation::find),
+                                            )
+                                            .route(
+                                                "/{id}",
+                                                web::get().to(routes::itinerary::get_by_id),
+                                            ),
+                                    ),
                             ),
                     ),
             )
