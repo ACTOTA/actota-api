@@ -60,12 +60,13 @@ async fn main() -> std::io::Result<()> {
                             ),
                     )
                     .service(
-                        web::scope("/activities")
-                            .route("/get", web::get().to(routes::activity::get_activities)),
-                    )
-                    .service(
-                        web::scope("/lodging")
-                            .route("/get", web::get().to(routes::lodging::get_lodging)),
+                        web::scope("")
+                            .route("/locations", web::get().to(routes::location::get_locations))
+                            .route("/lodging", web::get().to(routes::lodging::get_lodging))
+                            .route(
+                                "/activities",
+                                web::get().to(routes::activity::get_activities),
+                            ),
                     )
                     .service(
                         web::scope("/itineraries")
