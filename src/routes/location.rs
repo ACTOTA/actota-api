@@ -8,6 +8,7 @@ use crate::models::location::Location;
 #[derive(serde::Deserialize)]
 pub struct QueryParams {
     limit: Option<u16>,
+    search: Option<String>,
 }
 
 pub async fn get_locations(
@@ -22,8 +23,18 @@ pub async fn get_locations(
     if let Some(limit) = params.limit {
         options.limit = Some(limit.into());
     }
-
-    match collection.find(doc! {}).with_options(options).await {
+    let filter = match &params.search {
+        Some(search_text) if !search_text.is_empty() => {
+            doc! {
+                "city": {
+                    "$regex": format!("^{}", regex::escape(search_text)),
+                    "$options": "i"
+                }
+            }
+        }
+        _ => doc! {},
+    };
+    match collection.find(filter).with_options(options).await {
         Ok(cursor) => match cursor.try_collect::<Vec<Location>>().await {
             Ok(activities) => return HttpResponse::Ok().json(activities),
             Err(err) => {
