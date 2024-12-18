@@ -1,6 +1,16 @@
 # server
 
 ## Project setup
+Requires a `.env` file in the root directory. Reference .env.example for the required environment variables.
+
+### Run locally
+To run, simply run the following command:
+```
+cargo run
+```
+
+### Deploy to Cloud via Docker
+**Note:** Ensure that you have the Google Cloud SDK installed and configured.
 
 1. Build the docker image
 ```
