@@ -1,7 +1,8 @@
 # server
 
 ## Project setup
-Requires a `.env` file in the root directory. Reference .env.example for the required environment variables.
+- Requires a `.env` file in the root directory. Reference .env.example for the required environment variables.
+- Requires `credentials/service-account.json` for Google Cloud Storage access.
 
 ### Run locally
 To run, simply run the following command:
