@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use chrono::{DateTime, NaiveTime, Utc};
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
@@ -35,7 +37,9 @@ pub struct FeaturedVacation {
     pub start_location: Location,
     pub end_location: Location,
     pub description: String,
-    pub activities: Vec<Activity>,
+    #[serde(flatten)]
+    pub days: Days,
+    pub activities: Option<Vec<Activity>>,
     pub images: Option<Vec<String>>,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
@@ -48,9 +52,20 @@ pub struct Location {
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct Activity {
+pub struct Days {
+    days: HashMap<String, Vec<Day>>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct Day {
     time: NaiveTime,
     location: Location,
     name: String,
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct Activity {
+    label: String,
+    description: String,
+    tags: Vec<String>,
+}
