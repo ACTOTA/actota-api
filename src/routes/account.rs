@@ -25,6 +25,8 @@ pub async fn signup(
 
     let curr_time = Utc::now();
     let mut doc = input.into_inner();
+
+    doc.password = bcrypt::hash(doc.password, bcrypt::DEFAULT_COST).unwrap_or("".to_string());
     doc.created_at = Some(curr_time);
     doc.updated_at = Some(curr_time);
 
@@ -52,13 +54,13 @@ pub async fn signin(
 
     let doc = input.into_inner();
     let email = doc.email;
-    let password = doc.password;
 
     let filter = doc! { "email": &email };
 
     match collection.find_one(filter).await {
         Ok(Some(user)) => {
-            if password == user.password {
+            println!("User: {:?}", user);
+            if bcrypt::verify(&doc.password, &user.password).unwrap_or(false) {
                 let update = doc! {
                     "$set": {
                         "last_signin": Utc::now().to_string(),
@@ -159,3 +161,4 @@ fn generate_token(email: &str, user_id: ObjectId) -> Result<String, jsonwebtoken
     let header = Header::new(Algorithm::HS256);
     encode(&header, &claims, &EncodingKey::from_secret(secret.as_ref()))
 }
+

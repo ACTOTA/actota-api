@@ -7,6 +7,7 @@ pub struct Location {
     pub id: Option<ObjectId>,
     pub city: String,
     pub state: String,
+    pub coordinates: (f64, f64),
     pub created_at: Option<DateTime>,
     pub updated_at: Option<DateTime>,
 }
