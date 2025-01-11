@@ -33,6 +33,9 @@ pub struct FeaturedVacation {
     pub fareharbor_id: u32,
     pub trip_name: String,
     pub person_cost: f32,
+    pub min_age: Option<u32>,
+    pub min_group: u32,
+    pub max_group: u32,
     pub length_days: u32,
     pub length_hours: u32,
     pub start_location: Location,
@@ -48,7 +51,8 @@ pub struct FeaturedVacation {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Location {
-    name: String,
+    city: String,
+    state: String,
     coordinates: (f32, f32),
 }
 
@@ -60,8 +64,14 @@ pub struct Days {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Day {
     time: NaiveTime,
-    location: Location,
+    location: ActivityLocation,
     name: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct ActivityLocation {
+    name: String,
+    coordinates: (f32, f32),
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
