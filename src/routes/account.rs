@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::middleware::auth::Claims;
-use crate::models::user::{UserSession, UserTraveler};
+use crate::models::user::{Newsletter, UserSession, UserTraveler};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TokenResponse {
@@ -162,3 +162,23 @@ fn generate_token(email: &str, user_id: ObjectId) -> Result<String, jsonwebtoken
     encode(&header, &claims, &EncodingKey::from_secret(secret.as_ref()))
 }
 
+pub async fn newsletter_signup(
+    data: web::Data<Arc<Client>>,
+    input: web::Json<Newsletter>,
+) -> impl Responder {
+    let client = data.into_inner();
+    let collection: mongodb::Collection<Newsletter> =
+        client.database("Travelers").collection("Newsletter");
+
+    let mut doc = input.into_inner();
+    doc.created_at = Utc::now();
+    doc.updated_at = Utc::now();
+
+    match collection.insert_one(&doc).await {
+        Ok(_) => HttpResponse::Ok().body("Subscribed to newsletter"),
+        Err(err) => {
+            eprintln!("Failed to insert document: {:?}", err);
+            HttpResponse::InternalServerError().body("Failed to subscribe to newsletter")
+        }
+    }
+}

@@ -30,3 +30,13 @@ pub struct UserSession {
     pub last_name: String,
     pub created_at: DateTime<Utc>,
 }
+
+#[derive(Serialize, Deserialize)]
+pub struct Newsletter {
+    #[serde(rename = "_id")]
+    pub id: Option<ObjectId>,
+    pub email: String,
+    pub subscribed: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
