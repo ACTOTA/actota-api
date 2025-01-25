@@ -37,6 +37,6 @@ pub struct Newsletter {
     pub id: Option<ObjectId>,
     pub email: String,
     pub subscribed: bool,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
 }

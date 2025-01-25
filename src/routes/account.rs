@@ -171,8 +171,8 @@ pub async fn newsletter_signup(
         client.database("Travelers").collection("Newsletter");
 
     let mut doc = input.into_inner();
-    doc.created_at = Utc::now();
-    doc.updated_at = Utc::now();
+    doc.created_at = Some(Utc::now());
+    doc.updated_at = Some(Utc::now());
 
     match collection.insert_one(&doc).await {
         Ok(_) => HttpResponse::Ok().body("Subscribed to newsletter"),
