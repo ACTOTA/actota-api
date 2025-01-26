@@ -33,10 +33,10 @@ pub struct UserSession {
 
 #[derive(Serialize, Deserialize)]
 pub struct Newsletter {
-    #[serde(rename = "_id")]
+    #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
     pub id: Option<ObjectId>,
     pub email: String,
-    pub subscribed: bool,
+    pub subscribed: Option<bool>,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
 }

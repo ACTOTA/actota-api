@@ -61,10 +61,17 @@ async fn main() -> std::io::Result<()> {
                     )
                     .service(
                         web::scope("")
-                            .service(web::scope("/newsletter").route(
-                                "/signup",
-                                web::post().to(routes::account::newsletter_signup),
-                            ))
+                            .service(
+                                web::scope("/newsletter")
+                                    .route(
+                                        "/subscribe",
+                                        web::post().to(routes::account::newsletter_subscribe),
+                                    )
+                                    .route(
+                                        "/unsubscribe",
+                                        web::put().to(routes::account::newsletter_unsubscribe),
+                                    ),
+                            )
                             .route("/locations", web::get().to(routes::location::get_locations))
                             .route("/lodging", web::get().to(routes::lodging::get_lodging))
                             .route(

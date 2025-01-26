@@ -162,7 +162,7 @@ fn generate_token(email: &str, user_id: ObjectId) -> Result<String, jsonwebtoken
     encode(&header, &claims, &EncodingKey::from_secret(secret.as_ref()))
 }
 
-pub async fn newsletter_signup(
+pub async fn newsletter_subscribe(
     data: web::Data<Arc<Client>>,
     input: web::Json<Newsletter>,
 ) -> impl Responder {
@@ -173,12 +173,34 @@ pub async fn newsletter_signup(
     let mut doc = input.into_inner();
     doc.created_at = Some(Utc::now());
     doc.updated_at = Some(Utc::now());
+    doc.subscribed = Some(true);
 
     match collection.insert_one(&doc).await {
         Ok(_) => HttpResponse::Ok().body("Subscribed to newsletter"),
         Err(err) => {
             eprintln!("Failed to insert document: {:?}", err);
             HttpResponse::InternalServerError().body("Failed to subscribe to newsletter")
+        }
+    }
+}
+
+pub async fn newsletter_unsubscribe(
+    data: web::Data<Arc<Client>>,
+    input: web::Json<Newsletter>,
+) -> impl Responder {
+    let client = data.into_inner();
+    let collection: mongodb::Collection<Newsletter> =
+        client.database("Travelers").collection("Newsletter");
+
+    let doc = input.into_inner();
+    let filter = doc! { "email": doc.email };
+    let update = doc! { "$set": { "subscribed": false } };
+
+    match collection.update_one(filter, update).await {
+        Ok(_) => HttpResponse::Ok().body("Unsubscribed from newsletter"),
+        Err(err) => {
+            eprintln!("Failed to update document: {:?}", err);
+            HttpResponse::InternalServerError().body("Failed to unsubscribe from newsletter")
         }
     }
 }
