@@ -3,6 +3,7 @@ use chrono::{Duration, Utc};
 use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
 use mongodb::bson::doc;
 use mongodb::bson::oid::ObjectId;
+use mongodb::error::{WriteError, WriteFailure};
 use mongodb::Client;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -23,6 +24,10 @@ pub async fn signup(
     let collection: mongodb::Collection<UserTraveler> =
         client.database("Travelers").collection("User");
 
+    if !is_valid_email(&input.email) {
+        return HttpResponse::BadRequest().body("Invalid email address");
+    }
+
     let curr_time = Utc::now();
     let mut doc = input.into_inner();
 
@@ -37,10 +42,20 @@ pub async fn signup(
                 Err(_) => HttpResponse::InternalServerError().body("Token generation failed"),
             }
         }
-        Err(err) => {
-            eprintln!("Failed to insert document: {:?}", err);
-            HttpResponse::InternalServerError().body("Failed to create account.")
-        }
+        Err(err) => match *err.kind {
+            mongodb::error::ErrorKind::Write(error_info) => match error_info {
+                mongodb::error::WriteFailure::WriteError(WriteError { code, .. }) => {
+                    if code == 11000 {
+                        HttpResponse::Conflict().body("User already exists")
+                    } else {
+                        println!("Error code: {}", code);
+                        HttpResponse::InternalServerError().body("Failed to create user")
+                    }
+                }
+                _ => HttpResponse::InternalServerError().body("Failed to create user"),
+            },
+            _ => HttpResponse::InternalServerError().body("Failed to create user"),
+        },
     }
 }
 
@@ -145,6 +160,13 @@ pub async fn user_session(
         },
         Err(resp) => resp,
     }
+}
+
+fn is_valid_email(email: &str) -> bool {
+    let re = regex::Regex::new(
+        r"^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?)*$",
+    );
+    return re.unwrap().is_match(email);
 }
 
 fn generate_token(email: &str, user_id: ObjectId) -> Result<String, jsonwebtoken::errors::Error> {
