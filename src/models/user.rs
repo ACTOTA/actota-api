@@ -1,6 +1,6 @@
-use serde::{Deserialize, Serialize};
-use mongodb::bson::oid::ObjectId;
 use chrono::{DateTime, NaiveDate, Utc};
+use mongodb::bson::oid::ObjectId;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct UserTraveler {
@@ -18,5 +18,25 @@ pub struct UserTraveler {
     pub failed_signins: Option<i32>,
     // We always want these fields, but have them optional so we can set them in the code
     pub created_at: Option<DateTime<Utc>>,
-    pub updated_at: Option<DateTime<Utc>>
+    pub updated_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct UserSession {
+    #[serde(rename = "_id")]
+    pub id: ObjectId,
+    pub email: String,
+    pub first_name: String,
+    pub last_name: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct Newsletter {
+    #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
+    pub id: Option<ObjectId>,
+    pub email: String,
+    pub subscribed: Option<bool>,
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
 }
