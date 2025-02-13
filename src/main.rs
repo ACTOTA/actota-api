@@ -1,7 +1,7 @@
 use std::{env, path::PathBuf};
 
 use actix_cors::Cors;
-use actix_web::{middleware::Logger, web, App, HttpServer};
+use actix_web::{middleware::Logger, web, App, HttpResponse, HttpServer};
 use env_logger::Env;
 
 mod db;
@@ -9,9 +9,6 @@ mod middleware;
 mod models;
 mod routes;
 mod services;
-
-const HOST: &str = "0.0.0.0";
-const PORT: u16 = 8080;
 
 #[cfg(debug_assertions)]
 fn setup_credentials() {
@@ -40,19 +37,17 @@ async fn main() -> std::io::Result<()> {
         println!("Release mode");
     }
 
-    let host = std::env::var("HOST").unwrap_or_else(|_| HOST.to_string());
-    let port: u16 = std::env::var("PORT")
-        .unwrap_or_else(|_| PORT.to_string())
-        .parse()
-        .unwrap_or(PORT);
-    println!("Attempting to bind to {}:{}", host, port);
+    let port = std::env::var("PORT")
+        .expect("PORT environment variable is required")
+        .parse::<u16>()
+        .expect("PORT must be a valid number");
+
+    println!("Attempting to bind to {}", port);
 
     let mongo_uri = std::env::var("MONGODB_URI").expect("MONGODB_URI must be set");
     println!("Got MongoDB URI, attempting connection...");
     let client = db::mongo::create_mongo_client(&mongo_uri).await;
     println!("MongoDB connection established");
-
-    println!("Starting HTTP server...");
 
     HttpServer::new(move || {
         App::new()
@@ -66,6 +61,11 @@ async fn main() -> std::io::Result<()> {
                     .max_age(3600),
             )
             .route("/health", web::get().to(|| async { "OK" }))
+            .route(
+                "/",
+                web::get()
+                    .to(|| async { HttpResponse::Ok().content_type("text/plain").body("OK") }),
+            )
             .app_data(web::Data::new(client.clone()))
             .service(
                 web::scope("/api")
@@ -127,7 +127,7 @@ async fn main() -> std::io::Result<()> {
                     ),
             )
     })
-    .bind((host, port))?
+    .bind(("0.0.0.0", port))?
     .run()
     .await
 }
