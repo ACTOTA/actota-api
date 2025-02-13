@@ -3,7 +3,7 @@ use chrono::{Duration, Utc};
 use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
 use mongodb::bson::doc;
 use mongodb::bson::oid::ObjectId;
-use mongodb::error::{WriteError, WriteFailure};
+use mongodb::error::WriteError;
 use mongodb::Client;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;

@@ -1,6 +1,7 @@
 # server
 
 ## Project setup
+- Install Rust: https://www.rust-lang.org/tools/install
 - Requires a `.env` file in the root directory. Reference .env.example for the required environment variables.
 - Requires `credentials/service-account.json` for Google Cloud Storage access.
 
@@ -11,7 +12,6 @@ cargo run
 ```
 
 ### Deploy to Cloud via Docker
-## Setup buildx
 ```
 # Build with platform specification
 docker buildx build --platform linux/amd64 -t gcr.io/actota/actota-api .

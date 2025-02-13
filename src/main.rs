@@ -12,7 +12,10 @@ mod services;
 const HOST: &str = "0.0.0.0";
 const PORT: u16 = 8080;
 
+#[cfg(debug_assertions)]
 fn setup_credentials() {
+    println!("Credentials setup complete");
+
     let credentials_path = PathBuf::from("credentials/service-account.json");
     env::set_var(
         "GOOGLE_APPLICATION_CREDENTIALS",
@@ -22,9 +25,14 @@ fn setup_credentials() {
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    println!("Application starting...");
+
+    #[cfg(debug_assertions)]
     setup_credentials();
 
     env_logger::init_from_env(Env::default().default_filter_or("info"));
+    println!("Logger initialized");
+
     if cfg!(debug_assertions) {
         dotenv::dotenv().ok();
     } else {
@@ -36,14 +44,19 @@ async fn main() -> std::io::Result<()> {
         .unwrap_or_else(|_| PORT.to_string())
         .parse()
         .unwrap_or(PORT);
+    println!("Attempting to bind to {}:{}", host, port);
 
     let mongo_uri = std::env::var("MONGODB_URI").expect("MONGODB_URI must be set");
-    println!("MongoDB URI: {}", mongo_uri);
+    println!("Got MongoDB URI, attempting connection...");
     let client = db::mongo::create_mongo_client(&mongo_uri).await;
+    println!("MongoDB connection established");
+
+    println!("Starting HTTP server...");
 
     HttpServer::new(move || {
         App::new()
             .wrap(Logger::default())
+            .route("/health", web::get().to(|| async { "OK" }))
             .app_data(web::Data::new(client.clone()))
             .service(
                 web::scope("/api")
