@@ -89,6 +89,10 @@ async fn main() -> std::io::Result<()> {
                             .route(
                                 "/{id}/favorites/{itinerary_id}",
                                 web::post().to(routes::account::favorites::add_favorite),
+                            )
+                            .route(
+                                "/{id}/favorites/{itinerary_id}",
+                                web::delete().to(routes::account::favorites::remove_favorite),
                             ),
                     )
                     .service(

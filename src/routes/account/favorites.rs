@@ -82,8 +82,42 @@ pub async fn add_favorite(
     }
 }
 
-pub async fn remove_favorite() -> impl Responder {
-    HttpResponse::Ok().body("Removed Favorite")
+pub async fn remove_favorite(
+    req: HttpRequest,
+    data: web::Data<Arc<Client>>,
+    path: web::Path<(String, String)>,
+) -> impl Responder {
+    let default_claims = Claims {
+        exp: 0,
+        sub: "0".to_string(),
+        iat: 0,
+        user_id: "0".to_string(),
+    };
+    let claims = req
+        .extensions_mut()
+        .get::<Claims>()
+        .unwrap_or(&default_claims)
+        .clone(); // Use default_claims
+
+    let client = data.into_inner();
+    let collection: mongodb::Collection<Favorite> =
+        client.database("Account").collection("Favorites");
+
+    let (_, itinerary_id) = path.into_inner();
+
+    let filter = doc! {
+        "user_id": ObjectId::parse_str(&claims.user_id).unwrap(),
+        "itinerary_id": ObjectId::parse_str(itinerary_id).unwrap(),
+    };
+
+    match collection.delete_one(filter).await {
+        Ok(_) => {
+            return HttpResponse::Ok().body("Removed Favorite");
+        }
+        Err(_) => {
+            return HttpResponse::InternalServerError().body("Failed to remove favorite");
+        }
+    }
 }
 
 pub async fn get_favorites() -> impl Responder {
