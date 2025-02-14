@@ -1,7 +1,8 @@
+use actix_http::Payload;
 use actix_web::{
     dev::{forward_ready, Service, ServiceRequest, ServiceResponse, Transform},
     error::ErrorUnauthorized,
-    Error, HttpMessage,
+    Error, FromRequest, HttpMessage, HttpRequest,
 };
 use futures::future::{ready, LocalBoxFuture, Ready};
 use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
@@ -13,6 +14,24 @@ pub struct Claims {
     pub exp: usize,  // expiration time
     pub iat: usize,  // issued at
     pub user_id: String,
+}
+impl FromRequest for Claims {
+    type Error = Error;
+    type Future = Ready<Result<Self, Self::Error>>;
+
+    fn from_request(req: &HttpRequest, _: &mut Payload) -> Self::Future {
+        let default_claims = Claims {
+            exp: 0,
+            sub: "0".to_string(),
+            iat: 0,
+            user_id: "0".to_string(),
+        };
+
+        match req.extensions().get::<Claims>() {
+            Some(claims) => ready(Ok(claims.clone())),
+            None => ready(Ok(default_claims)),
+        }
+    }
 }
 
 pub struct AuthMiddleware;

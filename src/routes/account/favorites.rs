@@ -4,29 +4,20 @@ use crate::{
 };
 use actix_web::{web, HttpMessage, HttpRequest, HttpResponse, Responder};
 use bson::{doc, oid::ObjectId};
+use futures::TryStreamExt;
 use mongodb::Client;
 use std::sync::Arc;
 
 pub async fn add_favorite(
-    req: HttpRequest,
     data: web::Data<Arc<Client>>,
     path: web::Path<(String, String)>,
+    claims: Claims,
 ) -> impl Responder {
-    // Get the user_id from bearer token
-    let default_claims = Claims {
-        exp: 0,
-        sub: "0".to_string(),
-        iat: 0,
-        user_id: "0".to_string(),
-    };
-    let claims = req
-        .extensions_mut()
-        .get::<Claims>()
-        .unwrap_or(&default_claims)
-        .clone(); // Use default_claims
-
     // Get the itinerary_id from the path
-    let (_, itinerary_id) = path.into_inner();
+    let (user_id, itinerary_id) = path.into_inner();
+    if user_id != claims.user_id {
+        return HttpResponse::Forbidden().body("Forbidden");
+    }
 
     let client = data.into_inner();
 
@@ -45,7 +36,7 @@ pub async fn add_favorite(
         client.database("Account").collection("Favorites");
 
     let filter = doc! {
-        "user_id": claims.user_id.clone(),
+        "user_id": ObjectId::parse_str(&claims.user_id).unwrap(),
         "itinerary_id": ObjectId::parse_str(&itinerary_id).unwrap(),
     };
 
@@ -83,27 +74,18 @@ pub async fn add_favorite(
 }
 
 pub async fn remove_favorite(
-    req: HttpRequest,
     data: web::Data<Arc<Client>>,
     path: web::Path<(String, String)>,
+    claims: Claims,
 ) -> impl Responder {
-    let default_claims = Claims {
-        exp: 0,
-        sub: "0".to_string(),
-        iat: 0,
-        user_id: "0".to_string(),
-    };
-    let claims = req
-        .extensions_mut()
-        .get::<Claims>()
-        .unwrap_or(&default_claims)
-        .clone(); // Use default_claims
-
     let client = data.into_inner();
     let collection: mongodb::Collection<Favorite> =
         client.database("Account").collection("Favorites");
 
-    let (_, itinerary_id) = path.into_inner();
+    let (user_id, itinerary_id) = path.into_inner();
+    if user_id != claims.user_id {
+        return HttpResponse::Forbidden().body("Forbidden");
+    }
 
     let filter = doc! {
         "user_id": ObjectId::parse_str(&claims.user_id).unwrap(),
@@ -120,11 +102,74 @@ pub async fn remove_favorite(
     }
 }
 
-pub async fn get_favorites() -> impl Responder {
-    // connect to the database
-    // get the favorites collection
-    // find all the favorites
-    // return the favorites
+pub async fn get_favorites(
+    data: web::Data<Arc<Client>>,
+    claims: Claims,
+    path: web::Path<(String,)>,
+) -> impl Responder {
+    if path.into_inner().0 != claims.user_id {
+        return HttpResponse::Forbidden().body("Forbidden");
+    }
 
-    HttpResponse::Ok().body("Favorites")
+    let client = data.into_inner();
+    let collection: mongodb::Collection<Favorite> =
+        client.database("Account").collection("Favorites");
+
+    let filter = doc! {
+        "user_id": ObjectId::parse_str(&claims.user_id).unwrap(),
+    };
+
+    match collection.find(filter).await {
+        Ok(cursor) => {
+            let results = cursor.try_collect::<Vec<Favorite>>().await;
+            match results {
+                Ok(favorites) => {
+                    // Extract itinerary IDs from favorites
+                    let itinerary_ids: Vec<ObjectId> = favorites
+                        .iter()
+                        .map(|favorite| favorite.itinerary_id.clone())
+                        .collect();
+
+                    // Fetch itineraries from Itineraries.Featured collection
+                    let itineraries_collection: mongodb::Collection<FeaturedVacation> =
+                        client.database("Itineraries").collection("Featured");
+
+                    let itinerary_filter = doc! {
+                        "_id": { "$in": itinerary_ids }
+                    };
+
+                    match itineraries_collection.find(itinerary_filter).await {
+                        Ok(itinerary_cursor) => {
+                            match itinerary_cursor
+                                .try_collect::<Vec<FeaturedVacation>>()
+                                .await
+                            {
+                                Ok(featured_itineraries) => {
+                                    HttpResponse::Ok().json(featured_itineraries)
+                                }
+                                Err(err) => {
+                                    eprintln!("Error fetching itineraries: {:?}", err);
+                                    HttpResponse::InternalServerError()
+                                        .body("Failed to retrieve itineraries")
+                                }
+                            }
+                        }
+                        Err(err) => {
+                            eprintln!("Error fetching itineraries: {:?}", err);
+                            HttpResponse::InternalServerError()
+                                .body("Failed to retrieve itineraries")
+                        }
+                    }
+                }
+                Err(err) => {
+                    eprintln!("Error retrieving favorites: {:?}", err);
+                    HttpResponse::InternalServerError().body("Failed to retrieve favorites")
+                }
+            }
+        }
+        Err(err) => {
+            eprintln!("Error fetching favorites: {:?}", err);
+            HttpResponse::InternalServerError().body("Failed to fetch favorites")
+        }
+    }
 }
