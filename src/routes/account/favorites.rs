@@ -2,7 +2,7 @@ use crate::{
     middleware::auth::Claims,
     models::{account::Favorite, itinerary::FeaturedVacation},
 };
-use actix_web::{web, HttpMessage, HttpRequest, HttpResponse, Responder};
+use actix_web::{web, HttpResponse, Responder};
 use bson::{doc, oid::ObjectId};
 use futures::TryStreamExt;
 use mongodb::Client;
@@ -51,7 +51,7 @@ pub async fn add_favorite(
             let time = chrono::Utc::now();
 
             let favorite = Favorite {
-                _id: None,
+                id: None,
                 user_id: ObjectId::parse_str(&claims.user_id).unwrap(),
                 itinerary_id: ObjectId::parse_str(&itinerary_id).unwrap(),
                 created_at: Some(time),

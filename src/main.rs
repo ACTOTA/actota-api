@@ -82,6 +82,14 @@ async fn main() -> std::io::Result<()> {
                     .service(
                         web::scope("/account")
                             .wrap(middleware::auth::AuthMiddleware)
+                            // .route(
+                            //     "/{id}/profile-pic",
+                            //     web::post().to(routes::account::account_info::upload_profile_pic),
+                            // )
+                            .route(
+                                "/{id}",
+                                web::get().to(routes::account::account_info::personal_information),
+                            )
                             .route(
                                 "/{id}/favorites",
                                 web::get().to(routes::account::favorites::get_favorites),

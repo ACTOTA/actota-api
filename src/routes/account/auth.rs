@@ -9,20 +9,17 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::middleware::auth::Claims;
-use crate::models::user::{Newsletter, UserSession, UserTraveler};
+use crate::models::account::User;
+use crate::models::user::{Newsletter, UserSession};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TokenResponse {
     auth_token: String,
 }
 
-pub async fn signup(
-    data: web::Data<Arc<Client>>,
-    input: web::Json<UserTraveler>,
-) -> impl Responder {
+pub async fn signup(data: web::Data<Arc<Client>>, input: web::Json<User>) -> impl Responder {
     let client = data.into_inner();
-    let collection: mongodb::Collection<UserTraveler> =
-        client.database("Travelers").collection("User");
+    let collection: mongodb::Collection<User> = client.database("Account").collection("Users");
 
     if !is_valid_email(&input.email) {
         return HttpResponse::BadRequest().body("Invalid email address");
@@ -59,13 +56,9 @@ pub async fn signup(
     }
 }
 
-pub async fn signin(
-    data: web::Data<Arc<Client>>,
-    input: web::Json<UserTraveler>,
-) -> impl Responder {
+pub async fn signin(data: web::Data<Arc<Client>>, input: web::Json<User>) -> impl Responder {
     let client = data.into_inner();
-    let collection: mongodb::Collection<UserTraveler> =
-        client.database("Travelers").collection("User");
+    let collection: mongodb::Collection<User> = client.database("Account").collection("Users");
 
     let doc = input.into_inner();
     let email = doc.email;
@@ -135,8 +128,7 @@ pub async fn user_session(
     data: web::Data<Arc<Client>>,
 ) -> impl Responder {
     let client = data.into_inner();
-    let collection: mongodb::Collection<UserTraveler> =
-        client.database("Travelers").collection("User");
+    let collection: mongodb::Collection<User> = client.database("Travelers").collection("User");
 
     let user_id = ObjectId::parse_str(&claims.user_id)
         .map_err(|_| HttpResponse::BadRequest().body("Invalid user ID"));
