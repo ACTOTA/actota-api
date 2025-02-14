@@ -38,7 +38,7 @@ async fn main() -> std::io::Result<()> {
     }
 
     let port = std::env::var("PORT")
-        .expect("PORT environment variable is required")
+        .unwrap_or_else(|_| "8080".to_string())
         .parse::<u16>()
         .expect("PORT must be a valid number");
 
@@ -58,7 +58,7 @@ async fn main() -> std::io::Result<()> {
                     .allow_any_origin()
                     .allow_any_method()
                     .allow_any_header()
-                    .max_age(3600),
+                    .max_age(240),
             )
             .route("/health", web::get().to(|| async { "OK" }))
             .route(
@@ -72,13 +72,23 @@ async fn main() -> std::io::Result<()> {
                     // Public routes
                     .service(
                         web::scope("/auth")
-                            .route("/signup", web::post().to(routes::account::signup))
-                            .route("/signin", web::post().to(routes::account::signin))
-                            .service(
-                                web::scope("").wrap(middleware::auth::AuthMiddleware).route(
-                                    "/session",
-                                    web::get().to(routes::account::user_session),
-                                ),
+                            .route("/signup", web::post().to(routes::account::auth::signup))
+                            .route("/signin", web::post().to(routes::account::auth::signin))
+                            .service(web::scope("").wrap(middleware::auth::AuthMiddleware).route(
+                                "/session",
+                                web::get().to(routes::account::auth::user_session),
+                            )),
+                    )
+                    .service(
+                        web::scope("/account")
+                            .wrap(middleware::auth::AuthMiddleware)
+                            .route(
+                                "/{id}/favorites",
+                                web::get().to(routes::account::favorites::get_favorites),
+                            )
+                            .route(
+                                "/{id}/favorites/{itinerary_id}",
+                                web::post().to(routes::account::favorites::add_favorite),
                             ),
                     )
                     .service(
@@ -87,11 +97,12 @@ async fn main() -> std::io::Result<()> {
                                 web::scope("/newsletter")
                                     .route(
                                         "/subscribe",
-                                        web::post().to(routes::account::newsletter_subscribe),
+                                        web::post().to(routes::account::auth::newsletter_subscribe),
                                     )
                                     .route(
                                         "/unsubscribe",
-                                        web::put().to(routes::account::newsletter_unsubscribe),
+                                        web::put()
+                                            .to(routes::account::auth::newsletter_unsubscribe),
                                     ),
                             )
                             .route("/locations", web::get().to(routes::location::get_locations))

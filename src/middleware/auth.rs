@@ -9,10 +9,10 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Claims {
-    pub sub: String,     // subject (email)
-    pub exp: usize,      // expiration time
-    pub iat: usize,      // issued at
-    pub user_id: String, // optional: add more claims as needed
+    pub sub: String, // subject (email)
+    pub exp: usize,  // expiration time
+    pub iat: usize,  // issued at
+    pub user_id: String,
 }
 
 pub struct AuthMiddleware;
