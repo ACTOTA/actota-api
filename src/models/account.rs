@@ -38,6 +38,7 @@ pub struct User {
     pub id: Option<ObjectId>,
     pub email: String,
     pub password: String, // Always hashed
+    pub customer_id: Option<String>,
     pub first_name: Option<String>,
     pub last_name: Option<String>,
     pub phone_number: Option<String>,

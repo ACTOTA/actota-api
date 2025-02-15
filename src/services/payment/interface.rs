@@ -1,3 +1,4 @@
+use crate::services::stripe::models::customer::CustomerData;
 use stripe::Customer;
 
 pub enum CustomerError {
@@ -6,13 +7,13 @@ pub enum CustomerError {
 }
 
 pub trait CustomerOperations {
-    fn get_customer(&self, customer_id: String) -> Result<Customer, CustomerError>;
-    fn create_customer(&self, customer: Customer) -> Result<Customer, CustomerError>;
-    fn update_customer(
+    async fn get_customer(&self, customer_id: &str) -> Result<CustomerData, CustomerError>;
+    async fn create_customer(&self, customer: CustomerData) -> Result<CustomerData, CustomerError>;
+    async fn update_customer(
         &self,
         customer_id: String,
-        customer: Customer,
-    ) -> Result<Customer, CustomerError>;
+        customer: CustomerData,
+    ) -> Result<CustomerData, CustomerError>;
 }
 
 // pub trait PaymentOperations {
