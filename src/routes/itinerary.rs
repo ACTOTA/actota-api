@@ -17,7 +17,12 @@ pub async fn get_by_id(id: web::Path<String>, data: web::Data<Arc<Client>>) -> i
         Err(_) => return HttpResponse::BadRequest().body("Invalid ObjectId format"),
     };
 
-    match collection.find_one(doc! { "_id": object_id }).await {
+    println!("Object ID: {:?}", object_id.to_string());
+
+    match collection
+        .find_one(doc! { "_id": object_id.to_string() })
+        .await
+    {
         Ok(Some(doc)) => {
             let processed_doc = get_images(vec![doc.clone()]).await;
             HttpResponse::Ok().json(processed_doc[0].clone())

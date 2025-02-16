@@ -103,7 +103,7 @@ async fn main() -> std::io::Result<()> {
                                 web::delete().to(routes::account::favorites::remove_favorite),
                             )
                             .route(
-                                "/{id}/payment-method",
+                                "/{id}/payment-methods",
                                 web::post()
                                     .to(routes::account::payment_methods::add_payment_method),
                             ),

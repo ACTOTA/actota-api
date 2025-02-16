@@ -1,24 +1,12 @@
 use std::str::FromStr;
 
-use stripe::{CreateCustomer, Customer, CustomerId};
+use stripe::CustomerId;
 
 use crate::services::payment::interface::{CustomerError, CustomerOperations};
 
-use super::models::customer::CustomerData;
+use super::{models::customer::CustomerData, provider::StripeProvider};
 
-pub struct StripeCustomer {
-    client: stripe::Client,
-}
-
-impl StripeCustomer {
-    pub fn new(api_key: impl Into<String>) -> Self {
-        Self {
-            client: stripe::Client::new(api_key.into()),
-        }
-    }
-}
-
-impl CustomerOperations for StripeCustomer {
+impl CustomerOperations for StripeProvider {
     async fn create_customer(&self, customer: CustomerData) -> Result<CustomerData, CustomerError> {
         let create_customer: stripe::CreateCustomer<'_> = (&customer).into();
 
@@ -36,6 +24,7 @@ impl CustomerOperations for StripeCustomer {
             Err(_) => Err(CustomerError::NotFound),
         }
     }
+
     async fn update_customer(
         &self,
         customer_id: String,

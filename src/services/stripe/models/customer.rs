@@ -1,9 +1,11 @@
+use serde::{Deserialize, Serialize};
 use stripe::{
     Address, CreateCustomer, CreateCustomerCashBalance, CreateCustomerShipping, Currency, Customer,
     CustomerInvoiceSettings, CustomerTax, CustomerTaxExempt, Discount, Metadata, PaymentMethodId,
     TaxIdData, Timestamp,
 };
 
+#[derive(Serialize, Deserialize)]
 pub struct CustomerData {
     pub id: Option<String>,
     pub address: Option<Address>,
