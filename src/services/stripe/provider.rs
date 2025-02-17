@@ -1,5 +1,5 @@
+use serde::{Deserialize, Serialize};
 use std::str::FromStr;
-
 use stripe::{CustomerId, PaymentMethod};
 
 use crate::services::payment::interface::{CustomerError, PaymentError, PaymentOperations};
@@ -18,7 +18,13 @@ impl StripeProvider {
     }
 }
 
-
+#[derive(Deserialize, Serialize, Debug)]
+struct PaymentMethodList {
+    data: Vec<PaymentMethod>, // This is what we want!
+    has_more: bool,
+    url: String,
+    object: String,
+}
 impl PaymentOperations for StripeProvider {
     async fn create_customer(&self, customer: CustomerData) -> Result<CustomerData, CustomerError> {
         let create_customer: stripe::CreateCustomer<'_> = (&customer).into();
@@ -75,15 +81,13 @@ impl PaymentOperations for StripeProvider {
             Err(_) => return Err(PaymentError::InternalServerError),
         };
 
-        println!("res: {:?}", res);
-
         if res.status().is_success() {
-            let body = res.text().await.unwrap();
-            let payment_methods: Vec<PaymentMethod> = match serde_json::from_str(&body) {
-                Ok(payment_methods) => payment_methods,
-                Err(_) => return Ok(Vec::new()),
-            };
 
+            let body = res.text().await.unwrap();
+            let payment_list = serde_json::from_str::<PaymentMethodList>(&body).unwrap();
+            println!("vec: {:?}", payment_list);
+            let payment_methods: Vec<PaymentMethod> = payment_list.data;
+            
             return Ok(payment_methods);
         }
 
