@@ -7,22 +7,20 @@ use std::sync::Arc;
 /*
     /api/itineraries/{id}
 */
-pub async fn get_by_id(id: web::Path<String>, data: web::Data<Arc<Client>>) -> impl Responder {
+pub async fn get_by_id(path: web::Path<String>, data: web::Data<Arc<Client>>) -> impl Responder {
     let client = data.into_inner();
     let collection: mongodb::Collection<FeaturedVacation> =
         client.database("Itineraries").collection("Featured");
-
-    let object_id = match ObjectId::parse_str(&id.as_str()) {
-        Ok(oid) => oid,
-        Err(_) => return HttpResponse::BadRequest().body("Invalid ObjectId format"),
+    let id: ObjectId = match ObjectId::parse_str(path.into_inner().as_str()) {
+        Ok(id) => id,
+        Err(_) => return HttpResponse::BadRequest().body("Invalid ID"),
     };
 
-    println!("Object ID: {:?}", object_id.to_string());
+    let filter = doc! { "_id": id };
 
-    match collection
-        .find_one(doc! { "_id": object_id.to_string() })
-        .await
-    {
+    println!("Filter: {:?}", filter);
+
+    match collection.find_one(filter).await {
         Ok(Some(doc)) => {
             let processed_doc = get_images(vec![doc.clone()]).await;
             HttpResponse::Ok().json(processed_doc[0].clone())

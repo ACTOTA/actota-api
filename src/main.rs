@@ -88,7 +88,8 @@ async fn main() -> std::io::Result<()> {
                             // )
                             .route(
                                 "/{id}",
-                                web::get().to(routes::account::account_info::personal_information),
+                                web::get()
+                                    .to(routes::account::account_info::update_personal_information),
                             )
                             .route(
                                 "/{id}/favorites",
@@ -101,6 +102,11 @@ async fn main() -> std::io::Result<()> {
                             .route(
                                 "/{id}/favorites/{itinerary_id}",
                                 web::delete().to(routes::account::favorites::remove_favorite),
+                            )
+                            .route(
+                                "/{id}/payment-methods",
+                                web::get()
+                                    .to(routes::account::payment_methods::get_payment_methods),
                             )
                             .route(
                                 "/{id}/payment-methods",

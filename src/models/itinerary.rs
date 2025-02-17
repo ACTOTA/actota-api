@@ -30,7 +30,7 @@ pub struct ItinerarySubmission {
 pub struct FeaturedVacation {
     #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
     pub id: Option<ObjectId>,
-    pub fareharbor_id: u32,
+    pub fareharbor_id: Option<u32>,
     pub trip_name: String,
     pub person_cost: f32,
     pub min_age: Option<u32>,

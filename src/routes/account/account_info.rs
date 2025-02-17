@@ -1,34 +1,46 @@
 use actix_multipart::Multipart;
 use actix_web::{web, HttpResponse, Responder};
-use bson::doc;
+use bson::{doc, oid::ObjectId};
 use cloud_storage::{Client as StorageClient, Object};
 use futures::{StreamExt, TryStreamExt};
 use mongodb::Client;
-use std::{env, sync::Arc};
+use std::{env, str::FromStr, sync::Arc};
 
 use crate::{middleware::auth::Claims, models::account::User};
 
-pub async fn personal_information(
+pub async fn update_personal_information(
     data: web::Data<Arc<Client>>,
     claims: Claims,
     path: web::Path<(String,)>,
-    input: web::Json<User>,
+    // input: web::Json<User>,
 ) -> impl Responder {
-    if path.into_inner().0 != claims.user_id {
+    let user_id = path.into_inner().0;
+    if user_id != claims.user_id {
         return HttpResponse::Forbidden().body("Forbidden");
     }
 
     let client = data.into_inner();
 
-    let collection: mongodb::Collection<User> =
-        client.database("Account").collection("UserTraveler");
+    let collection: mongodb::Collection<User> = client.database("Account").collection("Users");
 
-    let mut info = input.into_inner();
-    info.updated_at = Some(chrono::Utc::now());
+    let filter = doc! { "_id": ObjectId::from_str(&user_id).unwrap() };
 
-    let updates = bson::to_document(&info).unwrap();
+    println!("Filter: {:?}", filter);
 
-    let filter = doc! { "_id": claims.user_id.clone() };
+    let mut user = match collection.find_one(filter.clone()).await {
+        Ok(user) => match user {
+            Some(user) => user,
+            None => return HttpResponse::NotFound().body("User not found"),
+        },
+        Err(_) => return HttpResponse::InternalServerError().body("Failed to find user"),
+    };
+
+    user.updated_at = Some(chrono::Utc::now());
+    // let mut info = input.into_inner();
+    // info.updated_at = Some(chrono::Utc::now());
+
+    let updates = bson::to_document(&user).unwrap();
+
     match collection.update_one(filter, updates).await {
         Ok(_) => {
             return HttpResponse::Ok().body("User information updated");
