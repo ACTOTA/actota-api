@@ -128,7 +128,7 @@ pub async fn user_session(
     data: web::Data<Arc<Client>>,
 ) -> impl Responder {
     let client = data.into_inner();
-    let collection: mongodb::Collection<User> = client.database("Travelers").collection("User");
+    let collection: mongodb::Collection<User> = client.database("Account").collection("Users");
 
     let user_id = ObjectId::parse_str(&claims.user_id)
         .map_err(|_| HttpResponse::BadRequest().body("Invalid user ID"));
