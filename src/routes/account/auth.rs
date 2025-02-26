@@ -161,7 +161,10 @@ fn is_valid_email(email: &str) -> bool {
     return re.unwrap().is_match(email);
 }
 
-fn generate_token(email: &str, user_id: ObjectId) -> Result<String, jsonwebtoken::errors::Error> {
+pub fn generate_token(
+    email: &str,
+    user_id: ObjectId,
+) -> Result<String, jsonwebtoken::errors::Error> {
     let secret = std::env::var("JWT_SECRET").expect("JWT_SECRET must be set");
     let now = Utc::now();
 

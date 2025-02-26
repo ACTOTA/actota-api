@@ -74,6 +74,14 @@ async fn main() -> std::io::Result<()> {
                         web::scope("/auth")
                             .route("/signup", web::post().to(routes::account::auth::signup))
                             .route("/signin", web::post().to(routes::account::auth::signin))
+                            .route(
+                                "/google",
+                                web::get().to(routes::account::google_auth::google_auth_init),
+                            )
+                            .route(
+                                "/google/callback",
+                                web::get().to(routes::account::google_auth::google_auth_callback),
+                            )
                             .service(web::scope("").wrap(middleware::auth::AuthMiddleware).route(
                                 "/session",
                                 web::get().to(routes::account::auth::user_session),
