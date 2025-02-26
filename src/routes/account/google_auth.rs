@@ -80,9 +80,10 @@ pub async fn google_auth_callback(
             // Generate JWT token
             match generate_token(&existing_user.email, existing_user.id.unwrap()) {
                 Ok(token) => {
-                    // Redirect to frontend with token
-                    // In production, you'd typically redirect to your frontend app with the token
-                    let redirect_url = format!("/auth-success?token={}", token);
+                    let frontend_url = std::env::var("FRONTEND_URL")
+                        .unwrap_or("http://localhost:3000".to_string());
+                    let redirect_url = format!("{}/?token={}", frontend_url, token);
+
                     HttpResponse::Found()
                         .insert_header((header::LOCATION, redirect_url))
                         .finish()
@@ -119,7 +120,7 @@ pub async fn google_auth_callback(
                     match generate_token(&new_user.email, user_id) {
                         Ok(token) => {
                             // Redirect to frontend with token
-                            let redirect_url = format!("/auth-success?token={}", token);
+                            let redirect_url = format!("/?token={}", token);
                             HttpResponse::Found()
                                 .insert_header((header::LOCATION, redirect_url))
                                 .finish()
