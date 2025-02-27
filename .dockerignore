@@ -1,4 +1,6 @@
+.env
+.env.*
+credentials/
 target/
-Dockerfile
 .git/
 .gitignore
