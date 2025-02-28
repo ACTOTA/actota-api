@@ -1,45 +1,40 @@
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/devcontainers/rust AS builder
-WORKDIR /usr/src/app
-COPY . .
+# Build stage - explicitly set to x86_64/amd64
+FROM --platform=linux/amd64 rust:slim-bookworm AS builder
 
-# Install dependencies required for HTTP/2
+# Install build dependencies
 RUN apt-get update && apt-get install -y \
+    pkg-config \
     libssl-dev \
     ca-certificates \
-    gcc \
-    g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# Determine the target platform and install necessary Rust target
-ARG TARGETPLATFORM
-RUN case "$TARGETPLATFORM" in \
-        "linux/amd64") \
-            CARGO_TARGET="x86_64-unknown-linux-gnu" ;; \
-        "linux/arm64") \
-            CARGO_TARGET="aarch64-unknown-linux-gnu" ;; \
-        *) \
-            CARGO_TARGET="x86_64-unknown-linux-gnu" ;; \
-    esac && \
-    rustup target add $CARGO_TARGET && \
-    echo "Building for target: $CARGO_TARGET" && \
-    cargo build --release --target $CARGO_TARGET && \
-    mkdir -p /build && \
-    cp /usr/src/app/target/$CARGO_TARGET/release/actota-api /build/
+# Create a new empty shell project
+WORKDIR /usr/src/app
 
-# Create the final image - using Debian 12 (Bookworm) which has OpenSSL 3.x
-FROM --platform=$TARGETPLATFORM debian:bookworm-slim
+# Copy your manifests and source code
+COPY Cargo.toml ./
+COPY src/ ./src/
 
-# Install runtime dependencies
+# Build your application for release
+RUN cargo build --release
+
+# Final stage - also explicitly set to x86_64/amd64
+FROM --platform=linux/amd64 debian:bookworm-slim
+
+# Install only runtime dependencies
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     libssl3 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /build/actota-api /usr/local/bin/actota-api
+# Copy the build artifact from the builder stage
+COPY --from=builder /usr/src/app/target/release/actota-api /usr/local/bin/actota-api
 
+# Expose the port
 EXPOSE 8080
 
 # Set runtime environment variables
 ENV RUST_LOG=actix_web=debug,actix_http=debug
 
+# Run the application
 CMD ["/usr/local/bin/actota-api"]
