@@ -143,10 +143,14 @@ gcloud storage buckets add-iam-policy-binding gs://actota-profile-pictures \
 gcloud auth configure-docker
 
 # Build the Docker image
-docker build -t gcr.io/actota/actota-api .
-
+```bash
+docker buildx build --platform linux/amd64 \
+--tag gcr.io/actota/actota-api:am64 \
+--push .
+``````
 # Push to Google Container Registry
-docker push gcr.io/actota/actota-api
+```bash
+docker push gcr.io/actota/actota-api:am64
 ```
 
 ### Step 6: Deploy to Cloud Run with Environment Variables
