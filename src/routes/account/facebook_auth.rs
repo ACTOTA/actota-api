@@ -94,7 +94,7 @@ pub async fn facebook_auth_callback(
         }
         Ok(None) => {
             // User doesn't exist, create a new account
-            let mut new_user = User {
+            let new_user = User {
                 id: None,
                 email: user_info.email,
                 // We don't set a password for users who sign in with Facebook
@@ -145,4 +145,3 @@ pub async fn facebook_auth_callback(
         }
     }
 }
-
