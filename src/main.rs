@@ -132,6 +132,15 @@ async fn main() -> std::io::Result<()> {
                                 "/google/callback",
                                 web::get().to(routes::account::google_auth::google_auth_callback),
                             )
+                            .route(
+                                "/facebook",
+                                web::get().to(routes::account::facebook_auth::facebook_auth_init),
+                            )
+                            .route(
+                                "/facebook/callback",
+                                web::get()
+                                    .to(routes::account::facebook_auth::facebook_auth_callback),
+                            )
                             .service(web::scope("").wrap(middleware::auth::AuthMiddleware).route(
                                 "/session",
                                 web::get().to(routes::account::auth::user_session),
@@ -228,4 +237,3 @@ async fn main() -> std::io::Result<()> {
     .run()
     .await
 }
-

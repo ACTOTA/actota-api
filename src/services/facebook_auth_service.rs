@@ -77,4 +77,3 @@ pub async fn get_facebook_user_info(access_token: &str) -> Result<FacebookUserIn
         .await
         .map_err(|e| format!("Failed to parse user info: {}", e))
 }
-
