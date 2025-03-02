@@ -5,7 +5,7 @@ use stripe::{
     TaxIdData, Timestamp,
 };
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Default)]
 pub struct CustomerData {
     pub id: Option<String>,
     pub address: Option<Address>,
