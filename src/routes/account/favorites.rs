@@ -1,6 +1,7 @@
 use crate::{
     middleware::auth::Claims,
     models::{account::Favorite, itinerary::FeaturedVacation},
+    services::itinerary_service::get_images,
 };
 use actix_web::{web, HttpResponse, Responder};
 use bson::{doc, oid::ObjectId};
@@ -144,7 +145,10 @@ pub async fn get_favorites(
                                 .try_collect::<Vec<FeaturedVacation>>()
                                 .await
                             {
-                                Ok(featured_itineraries) => {
+                                Ok(mut featured_itineraries) => {
+                                    // Fetch images for each itinerary
+                                    featured_itineraries = get_images(featured_itineraries).await;
+
                                     HttpResponse::Ok().json(featured_itineraries)
                                 }
                                 Err(err) => {
