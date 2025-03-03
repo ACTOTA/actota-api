@@ -51,6 +51,26 @@ pub async fn update_personal_information(
     }
 }
 
+pub async fn get_personal_information(
+    data: web::Data<Arc<Client>>,
+    claims: Claims,
+    path: web::Path<(String,)>,
+) -> impl Responder {
+    let user_id = path.into_inner().0;
+    if user_id != claims.user_id {
+        return HttpResponse::Forbidden().body("Forbidden");
+    }
+    let client = data.into_inner();
+    let collection: mongodb::Collection<User> = client.database("Account").collection("Users");
+    let filter = doc! { "_id": ObjectId::from_str(&user_id).unwrap() };
+    match collection.find_one(filter).await {
+        Ok(user) => match user {
+            Some(user) => HttpResponse::Ok().json(user),
+            None => HttpResponse::NotFound().body("User not found"),
+        },
+        Err(_) => HttpResponse::InternalServerError().body("Failed to find user"),
+    }
+}
 // pub async fn upload_profile_pic(
 //     data: web::Data<Arc<Client>>,
 //     claims: Claims,
