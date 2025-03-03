@@ -1,4 +1,5 @@
 use crate::services::stripe::models::customer::CustomerData;
+use actix_web::HttpResponse;
 use stripe::PaymentMethod;
 
 pub enum CustomerError {
@@ -25,13 +26,15 @@ pub trait PaymentOperations {
         customer_id: String,
     ) -> Result<Vec<PaymentMethod>, PaymentError>;
 
-    async fn create_payment_method(
+    async fn attach_payment_method(
         &self,
-        payment: PaymentMethod,
-    ) -> Result<PaymentMethod, PaymentError>;
-    async fn update_payment_method(
-        &self,
+        customer_id: String,
         payment_id: String,
-        payment: PaymentMethod,
-    ) -> Result<PaymentMethod, PaymentError>;
+    ) -> Result<HttpResponse, PaymentError>;
+
+    async fn detach_payment_method(
+        &self,
+        customer_id: String,
+        payment_id: String,
+    ) -> Result<HttpResponse, PaymentError>;
 }

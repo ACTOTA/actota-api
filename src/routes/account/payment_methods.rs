@@ -20,6 +20,20 @@ struct CustomerResponse {
     created: bool,
 }
 
+// Request struct for attach_payment_method
+#[derive(Serialize, Deserialize)]
+pub struct AttachPaymentMethod {
+    customer_id: String,
+    payment_id: String,
+    default: bool,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct DetachPaymentMethod {
+    customer_id: String,
+    payment_id: String,
+}
+
 // Check for customer_id
 // If customer_id exists, return it
 async fn get_customer_id(client: &Arc<Client>, user_id: String) -> Option<String> {
@@ -249,4 +263,37 @@ pub async fn get_or_create_customer(
         customer_id,
         created: true,
     })
+}
+
+pub async fn attach_payment_method(input: web::Json<AttachPaymentMethod>) -> impl Responder {
+    let stripe_op = StripeProvider::new(std::env::var("STRIPE_SECRET_KEY").unwrap());
+    let customer_id = &input.customer_id;
+    let payment_id = &input.payment_id;
+    let _default = input.default;
+
+    match stripe_op
+        .attach_payment_method(customer_id.to_string(), payment_id.to_string())
+        .await
+    {
+        Ok(res) => return res,
+        Err(_) => {
+            return HttpResponse::InternalServerError().body("Failed to attach payment method")
+        }
+    }
+}
+
+pub async fn detach_payment_method(input: web::Json<DetachPaymentMethod>) -> impl Responder {
+    let stripe_op = StripeProvider::new(std::env::var("STRIPE_SECRET_KEY").unwrap());
+    let customer_id = &input.customer_id;
+    let payment_id = &input.payment_id;
+
+    match stripe_op
+        .detach_payment_method(customer_id.to_string(), payment_id.to_string())
+        .await
+    {
+        Ok(res) => return res,
+        Err(_) => {
+            return HttpResponse::InternalServerError().body("Failed to detach payment method")
+        }
+    }
 }

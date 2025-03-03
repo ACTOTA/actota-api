@@ -1,3 +1,4 @@
+use actix_web::HttpResponse;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 use stripe::{CustomerId, PaymentMethod};
@@ -82,31 +83,81 @@ impl PaymentOperations for StripeProvider {
         };
 
         if res.status().is_success() {
-
             let body = res.text().await.unwrap();
             let payment_list = serde_json::from_str::<PaymentMethodList>(&body).unwrap();
             println!("vec: {:?}", payment_list);
             let payment_methods: Vec<PaymentMethod> = payment_list.data;
-            
+
             return Ok(payment_methods);
         }
 
         Err(PaymentError::NotFound)
     }
 
-    async fn create_payment_method(
+    async fn attach_payment_method(
         &self,
-        payment: PaymentMethod,
-    ) -> Result<PaymentMethod, PaymentError> {
-        todo!()
+        customer_id: String,
+        payment_id: String,
+    ) -> Result<HttpResponse, PaymentError> {
+        let api_key = std::env::var("STRIPE_SECRET_KEY").unwrap();
+
+        let client = reqwest::Client::new();
+        let url = format!(
+            "https://api.stripe.com/v1/payment_methods/{}/attach",
+            payment_id
+        );
+
+        // Create form parameters to include the customer ID
+        let params = [("customer", customer_id)];
+
+        let res = match client
+            .post(&url) // Changed to POST from GET
+            .header("Authorization", format!("Bearer {}", api_key))
+            .form(&params) // Added form parameters
+            .send()
+            .await
+        {
+            Ok(res) => res,
+            Err(_) => return Err(PaymentError::InternalServerError),
+        };
+
+        if res.status().is_success() {
+            return Ok(HttpResponse::Ok().body("Payment method added"));
+        } else {
+            return Ok(HttpResponse::InternalServerError().body("Failed to add payment method"));
+        }
     }
 
-    async fn update_payment_method(
+    async fn detach_payment_method(
         &self,
+        customer_id: String,
         payment_id: String,
-        payment: PaymentMethod,
-    ) -> Result<PaymentMethod, PaymentError> {
-        todo!()
+    ) -> Result<HttpResponse, PaymentError> {
+        let api_key = std::env::var("STRIPE_SECRET_KEY").unwrap();
+
+        let client = reqwest::Client::new();
+        let url = format!(
+            "https://api.stripe.com/v1/payment_methods/{}/detach",
+            payment_id
+        );
+
+        let params = [("customer", customer_id)];
+
+        let res = match client
+            .delete(&url)
+            .header("Authorization", format!("Bearer {}", api_key))
+            .form(&params)
+            .send()
+            .await
+        {
+            Ok(res) => res,
+            Err(_) => return Err(PaymentError::InternalServerError),
+        };
+
+        if res.status().is_success() {
+            return Ok(HttpResponse::Ok().body("Payment method deleted"));
+        } else {
+            return Ok(HttpResponse::InternalServerError().body("Failed to delete payment method"));
+        }
     }
 }
-

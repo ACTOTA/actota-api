@@ -153,6 +153,11 @@ async fn main() -> std::io::Result<()> {
                             .route(
                                 "/{id}",
                                 web::get()
+                                    .to(routes::account::account_info::get_personal_information),
+                            )
+                            .route(
+                                "/{id}",
+                                web::get()
                                     .to(routes::account::account_info::update_personal_information),
                             )
                             .route(
@@ -181,6 +186,16 @@ async fn main() -> std::io::Result<()> {
                                 "/{id}/customer",
                                 web::post()
                                     .to(routes::account::payment_methods::get_or_create_customer),
+                            )
+                            .route(
+                                "/{id}/attach-payment-method",
+                                web::post()
+                                    .to(routes::account::payment_methods::attach_payment_method),
+                            )
+                            .route(
+                                "/{id}/detach-payment-method",
+                                web::post()
+                                    .to(routes::account::payment_methods::detach_payment_method),
                             ),
                     )
                     .service(
