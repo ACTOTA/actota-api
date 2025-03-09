@@ -1,9 +1,7 @@
 use std::{env, path::PathBuf};
 
 use actix_cors::Cors;
-use actix_web::{
-    middleware::Logger, web, App, Error, HttpRequest, HttpResponse, HttpServer, Responder,
-};
+use actix_web::{middleware::Logger, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use env_logger::Env;
 
 mod db;
@@ -32,13 +30,32 @@ async fn protocol_info(req: HttpRequest) -> impl Responder {
 
 #[cfg(debug_assertions)]
 fn setup_credentials() {
-    println!("Setting up credentials for local development");
+    println!("Setting up Google Cloud credentials");
 
+    // Check if credentials are already set in the environment
+    if let Ok(existing_creds) = env::var("GOOGLE_APPLICATION_CREDENTIALS") {
+        println!(
+            "Using Google credentials from environment variable: {}",
+            existing_creds
+        );
+        return;
+    }
+
+    // Fall back to file-based credentials
     let credentials_path = PathBuf::from("credentials/service-account.json");
-    env::set_var(
-        "GOOGLE_APPLICATION_CREDENTIALS",
-        credentials_path.to_str().unwrap(),
-    );
+    if credentials_path.exists() {
+        println!(
+            "Using Google credentials from file: {}",
+            credentials_path.display()
+        );
+        env::set_var(
+            "GOOGLE_APPLICATION_CREDENTIALS",
+            credentials_path.to_str().unwrap_or_default(),
+        );
+    } else {
+        println!("Warning: No Google credentials found in environment or file system");
+        println!("Cloud Storage operations may fail without valid credentials");
+    }
 
     println!("Credentials setup complete");
 }
