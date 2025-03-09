@@ -67,7 +67,7 @@ async fn check_mongodb(client: &web::Data<Arc<Client>>) -> ServiceStatus {
     {
         Ok(_) => ServiceStatus {
             status: "ok".to_string(),
-            details: None,
+            details: Some("Connected successfully to MongoDB".to_string()),
         },
         Err(e) => {
             // Log error for internal visibility
@@ -85,9 +85,17 @@ async fn check_stripe_api() -> ServiceStatus {
     // Just validate key existence for basic check
     // In a more comprehensive check, you could make a test API call
     match env::var("STRIPE_SECRET_KEY") {
-        Ok(_) => ServiceStatus {
-            status: "ok".to_string(),
-            details: None,
+        Ok(key) => {
+            let masked_key = if key.len() > 8 {
+                format!("{}***{}", &key[0..4], &key[key.len()-4..])
+            } else {
+                "***".to_string()
+            };
+            
+            ServiceStatus {
+                status: "ok".to_string(),
+                details: Some(format!("Stripe API key configured ({})", masked_key)),
+            }
         },
         Err(_) => ServiceStatus {
             status: "error".to_string(),
@@ -103,9 +111,17 @@ async fn check_google_auth() -> ServiceStatus {
     let redirect_uri = env::var("GOOGLE_REDIRECT_URI").ok();
     
     if client_id.is_some() && client_secret.is_some() && redirect_uri.is_some() {
+        let id = client_id.unwrap();
+        let masked_id = if id.len() > 8 {
+            format!("{}...{}", &id[0..6], &id[id.len()-4..])
+        } else {
+            "***".to_string()
+        };
+        
         ServiceStatus {
             status: "ok".to_string(),
-            details: None,
+            details: Some(format!("Google Auth configured, Client ID: {}, Redirect: {}", 
+                masked_id, redirect_uri.unwrap())),
         }
     } else {
         let mut missing = Vec::new();
@@ -134,9 +150,17 @@ async fn check_facebook_auth() -> ServiceStatus {
     let redirect_uri = env::var("FACEBOOK_REDIRECT_URI").ok();
     
     if client_id.is_some() && client_secret.is_some() && redirect_uri.is_some() {
+        let id = client_id.unwrap();
+        let masked_id = if id.len() > 8 {
+            format!("{}...{}", &id[0..6], &id[id.len()-4..])
+        } else {
+            "***".to_string()
+        };
+        
         ServiceStatus {
             status: "ok".to_string(),
-            details: None,
+            details: Some(format!("Facebook Auth configured, App ID: {}, Redirect: {}", 
+                masked_id, redirect_uri.unwrap())),
         }
     } else {
         let mut missing = Vec::new();
