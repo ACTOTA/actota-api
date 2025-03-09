@@ -104,7 +104,7 @@ async fn main() -> std::io::Result<()> {
                 .into()
             }))
             // Add diagnostic endpoints
-            .route("/health", web::get().to(|| async { "OK" }))
+            .route("/health", web::get().to(routes::health::health_check))
             .route("/protocol-info", web::get().to(protocol_info))
             .route(
                 "/",
