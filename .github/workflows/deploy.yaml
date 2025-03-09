@@ -6,7 +6,7 @@ on:
       - uat
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-  SERVICE_NAME: actota-frontend
+  SERVICE_NAME: actota-api
   REGION: us-central1
   # Define these here for clarity, they will be accessed correctly in the job steps
   NODE_ENV: ${{vars.NODE_ENV}}
