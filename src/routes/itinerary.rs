@@ -38,6 +38,27 @@ pub async fn get_by_id(path: web::Path<String>, data: web::Data<Arc<Client>>) ->
     /api/itineraries (Get all itineraries - public endpoint)
 */
 pub async fn get_all(data: web::Data<Arc<Client>>) -> impl Responder {
+    println!("Handling request for /api/itineraries");
+    
+    // Log cloud storage environment variables (without values)
+    if let Ok(_) = std::env::var("CLOUD_STORAGE_URL") {
+        println!("CLOUD_STORAGE_URL is set");
+    } else {
+        println!("CLOUD_STORAGE_URL is NOT set");
+    }
+    
+    if let Ok(_) = std::env::var("ITINERARY_BUCKET") {
+        println!("ITINERARY_BUCKET is set");
+    } else {
+        println!("ITINERARY_BUCKET is NOT set");
+    }
+    
+    if let Ok(_) = std::env::var("GOOGLE_APPLICATION_CREDENTIALS") {
+        println!("GOOGLE_APPLICATION_CREDENTIALS is set");
+    } else {
+        println!("GOOGLE_APPLICATION_CREDENTIALS is NOT set");
+    }
+    
     let client = data.into_inner();
     let collection = client
         .database("Itineraries")
@@ -54,8 +75,12 @@ pub async fn get_all(data: web::Data<Arc<Client>>) -> impl Responder {
                     return HttpResponse::Ok().json(Vec::<FeaturedVacation>::new());
                 }
 
+                println!("Found {} itineraries in database", itineraries.len());
+                
                 // Process images for all itineraries
                 let processed_itineraries = get_images(itineraries).await;
+                println!("Processed {} itineraries with images", processed_itineraries.len());
+                
                 HttpResponse::Ok().json(processed_itineraries)
             }
             Err(err) => {
