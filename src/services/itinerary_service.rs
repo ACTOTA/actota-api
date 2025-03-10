@@ -4,6 +4,7 @@ use cloud_storage::ListRequest;
 use futures::future::join_all;
 use futures::StreamExt;
 use std::env;
+use std::path::Path;
 use tokio::pin;
 
 pub async fn get_images(mut vacations: Vec<FeaturedVacation>) -> Vec<FeaturedVacation> {
@@ -11,8 +12,26 @@ pub async fn get_images(mut vacations: Vec<FeaturedVacation>) -> Vec<FeaturedVac
     // This is fetching the images from the Google Cloud Storage bucket
     let base_url = env::var("CLOUD_STORAGE_URL").unwrap_or("".to_string());
     let bucket_name = env::var("ITINERARY_BUCKET").unwrap_or("".to_string());
-
-    let storage_client = StorageClient::default();
+    
+    // Check environment to determine authentication approach
+    let env_type = env::var("RUST_ENV").unwrap_or_else(|_| "development".to_string());
+    let storage_client = if env_type == "production" {
+        // In production (Cloud Run), use the default service account
+        StorageClient::default()
+    } else {
+        // In development, check for local credentials file
+        let credentials_path = Path::new("credentials/service-account.json");
+        if credentials_path.exists() {
+            // Set environment variable if not already set
+            if env::var("GOOGLE_APPLICATION_CREDENTIALS").is_err() {
+                env::set_var("GOOGLE_APPLICATION_CREDENTIALS", credentials_path.to_str().unwrap());
+            }
+            StorageClient::default()
+        } else {
+            eprintln!("Warning: Local credentials file not found at credentials/service-account.json");
+            StorageClient::default()
+        }
+    };
 
     // Create futures for each vacation
     let futures: Vec<_> = vacations
@@ -53,9 +72,25 @@ pub async fn get_images(mut vacations: Vec<FeaturedVacation>) -> Vec<FeaturedVac
         .collect();
 
     // Execute all futures concurrently
-    return join_all(futures)
-        .await
+    let results = join_all(futures).await;
+    
+    // Improved error handling - log any errors before filtering them out
+    let processed_results: Vec<FeaturedVacation> = results
         .into_iter()
-        .filter_map(|r: Result<FeaturedVacation, cloud_storage::Error>| r.ok())
-        .collect::<Vec<FeaturedVacation>>();
+        .filter_map(|r: Result<FeaturedVacation, cloud_storage::Error>| {
+            match r {
+                Ok(vacation) => Some(vacation),
+                Err(err) => {
+                    eprintln!("Error fetching images from Cloud Storage: {}", err);
+                    None
+                }
+            }
+        })
+        .collect();
+    
+    if processed_results.is_empty() && !vacations.is_empty() {
+        eprintln!("Warning: All itineraries failed to load images from Cloud Storage");
+    }
+    
+    return processed_results;
 }
