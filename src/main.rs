@@ -242,10 +242,7 @@ async fn main() -> std::io::Result<()> {
                                         "/featured",
                                         web::get().to(routes::featured_vacation::get_all),
                                     )
-                                    .route(
-                                        "",
-                                        web::get().to(routes::itinerary::get_all),
-                                    )
+                                    .route("", web::get().to(routes::itinerary::get_all))
                                     // Protected routes
                                     .service(
                                         web::scope("")
