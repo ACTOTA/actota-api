@@ -8,89 +8,97 @@ use std::path::Path;
 use tokio::pin;
 
 pub async fn get_images(mut vacations: Vec<FeaturedVacation>) -> Vec<FeaturedVacation> {
-    // I have absolutely no idea how I got this to work
-    // This is fetching the images from the Google Cloud Storage bucket
-    let base_url = env::var("CLOUD_STORAGE_URL").unwrap_or("".to_string());
-    let bucket_name = env::var("ITINERARY_BUCKET").unwrap_or("".to_string());
-    
-    // Check environment to determine authentication approach
-    let env_type = env::var("RUST_ENV").unwrap_or_else(|_| "development".to_string());
-    let storage_client = if env_type == "production" {
-        // In production (Cloud Run), use the default service account
-        StorageClient::default()
-    } else {
-        // In development, check for local credentials file
-        let credentials_path = Path::new("credentials/service-account.json");
-        if credentials_path.exists() {
-            // Set environment variable if not already set
-            if env::var("GOOGLE_APPLICATION_CREDENTIALS").is_err() {
-                env::set_var("GOOGLE_APPLICATION_CREDENTIALS", credentials_path.to_str().unwrap());
-            }
-            StorageClient::default()
-        } else {
-            eprintln!("Warning: Local credentials file not found at credentials/service-account.json");
-            StorageClient::default()
-        }
-    };
+    let base_url = env::var("CLOUD_STORAGE_URL").unwrap_or_else(|_| {
+        println!("Warning: CLOUD_STORAGE_URL not set, defaulting to storage.googleapis.com");
+        "https://storage.googleapis.com".to_string()
+    });
+
+    let bucket_name = env::var("ITINERARY_BUCKET").unwrap_or_else(|_| {
+        println!("Warning: ITINERARY_BUCKET not set, defaulting to actota-itineraries");
+        "actota-itineraries".to_string()
+    });
+
+    println!("Retrieving images from: {}/{}", base_url, bucket_name);
+
+    let storage_client = StorageClient::default();
 
     // Create futures for each vacation
     let futures: Vec<_> = vacations
         .iter_mut()
         .map(|vacation| async {
+            let vacation_id = vacation
+                .id
+                .unwrap_or(bson::oid::ObjectId::new())
+                .to_string();
+
+            println!("Looking for images for vacation ID: {}", vacation_id);
+
             let list_request = ListRequest {
-                prefix: Some(
-                    vacation
-                        .id
-                        .unwrap_or(bson::oid::ObjectId::new())
-                        .to_string(),
-                ),
+                prefix: Some(vacation_id.clone()),
                 ..Default::default()
             };
 
             let mut files = Vec::new();
 
-            let stream = storage_client
+            match storage_client
                 .object()
                 .list(&bucket_name, list_request)
-                .await?;
-            pin!(stream);
+                .await
+            {
+                Ok(stream) => {
+                    pin!(stream);
 
-            while let Some(object_result) = stream.next().await {
-                if let Ok(object) = object_result {
-                    for item in object.items {
-                        if item.name.ends_with(".jpg") || item.name.ends_with(".png") {
-                            let url = format!("{}/{}/{}", base_url, bucket_name, item.name);
-                            files.push(url);
+                    while let Some(object_result) = stream.next().await {
+                        match object_result {
+                            Ok(object) => {
+                                for item in object.items {
+                                    if item.name.ends_with(".jpg") || item.name.ends_with(".png") {
+                                        let url =
+                                            format!("{}/{}/{}", base_url, bucket_name, item.name);
+                                        println!("Found image: {}", url);
+                                        files.push(url);
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                println!("Error processing object in stream: {:?}", e);
+                            }
                         }
                     }
+
+                    vacation.images = Some(files);
+                    Ok(vacation.clone())
+                }
+                Err(e) => {
+                    println!(
+                        "Error listing objects for vacation {}: {:?}",
+                        vacation_id, e
+                    );
+                    // Return the vacation without images rather than failing completely
+                    vacation.images = Some(vec![]);
+                    Ok(vacation.clone())
                 }
             }
-
-            vacation.images = Some(files);
-            Ok(vacation.clone())
         })
         .collect();
 
     // Execute all futures concurrently
     let results = join_all(futures).await;
-    
-    // Improved error handling - log any errors before filtering them out
-    let processed_results: Vec<FeaturedVacation> = results
+
+    // Log any errors but still return vacations
+    let processed_vacations = results
         .into_iter()
         .filter_map(|r: Result<FeaturedVacation, cloud_storage::Error>| {
-            match r {
-                Ok(vacation) => Some(vacation),
-                Err(err) => {
-                    eprintln!("Error fetching images from Cloud Storage: {}", err);
-                    None
-                }
+            if let Err(e) = &r {
+                println!("Error processing vacation images: {:?}", e);
             }
+            r.ok()
         })
-        .collect();
-    
-    if processed_results.is_empty() && !vacations.is_empty() {
-        eprintln!("Warning: All itineraries failed to load images from Cloud Storage");
-    }
-    
-    return processed_results;
+        .collect::<Vec<FeaturedVacation>>();
+
+    println!(
+        "Processed {} vacations with images",
+        processed_vacations.len()
+    );
+    processed_vacations
 }
