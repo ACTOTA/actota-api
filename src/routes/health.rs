@@ -23,12 +23,7 @@ pub async fn health_check(client: web::Data<Arc<Client>>) -> impl Responder {
     let mut health = HealthStatus {
         status: "ok".to_string(),
         services: HashMap::new(),
-        environment: if cfg!(debug_assertions) {
-            "development"
-        } else {
-            "production"
-        }
-        .to_string(),
+        environment: env::var("RUST_ENV").unwrap_or("development".to_string()),
         version: env!("CARGO_PKG_VERSION").to_string(),
     };
 
