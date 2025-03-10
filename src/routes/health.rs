@@ -4,6 +4,7 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::env;
 use std::sync::Arc;
+use cloud_storage::Client as StorageClient;
 
 #[derive(Serialize)]
 struct HealthStatus {
@@ -50,12 +51,19 @@ pub async fn health_check(client: web::Data<Arc<Client>>) -> impl Responder {
     health
         .services
         .insert("facebook_auth".to_string(), facebook_auth_result.clone());
+        
+    // Check Cloud Storage connection
+    let cloud_storage_result = check_cloud_storage().await;
+    health
+        .services
+        .insert("cloud_storage".to_string(), cloud_storage_result.clone());
 
     // Determine overall status (if any service is not ok, the overall status is degraded)
     if mongo_result.status != "ok"
         || stripe_result.status != "ok"
         || google_auth_result.status != "ok"
         || facebook_auth_result.status != "ok"
+        || cloud_storage_result.status != "ok"
     {
         health.status = "degraded".to_string();
     }
@@ -189,6 +197,57 @@ async fn check_facebook_auth() -> ServiceStatus {
             status: "error".to_string(),
             details: Some(format!("Missing configuration: {}", missing.join(", "))),
         }
+    }
+}
+
+async fn check_cloud_storage() -> ServiceStatus {
+    // Check if required environment variables are set
+    let itinerary_bucket = env::var("ITINERARY_BUCKET").ok();
+    let profile_pic_bucket = env::var("PROFILE_PIC_BUCKET").ok();
+    let _credentials_path = env::var("GOOGLE_APPLICATION_CREDENTIALS").ok();
+    
+    if itinerary_bucket.is_none() || profile_pic_bucket.is_none() {
+        let mut missing = Vec::new();
+        
+        if itinerary_bucket.is_none() {
+            missing.push("ITINERARY_BUCKET");
+        }
+        if profile_pic_bucket.is_none() {
+            missing.push("PROFILE_PIC_BUCKET");
+        }
+        
+        return ServiceStatus {
+            status: "error".to_string(),
+            details: Some(format!("Missing bucket configuration: {}", missing.join(", "))),
+        };
+    }
+    
+    // Capture the bucket name before using it in the async operation
+    let bucket_name = itinerary_bucket.as_ref().unwrap().clone();
+    
+    // Use a different approach to verify bucket existence
+    use cloud_storage::ListRequest;
+    let list_request = ListRequest {
+        max_results: Some(1), // We only need to check if we can list at least one item
+        ..Default::default()
+    };
+    
+    // Create a longer-lived client
+    let client = StorageClient::default();
+    let result = client.object().list(bucket_name.as_str(), list_request).await;
+    
+    match result {
+        Ok(_) => ServiceStatus {
+            status: "ok".to_string(),
+            details: Some(format!(
+                "Connected to Cloud Storage: itinerary bucket '{}' accessible", 
+                bucket_name
+            )),
+        },
+        Err(e) => ServiceStatus {
+            status: "error".to_string(),
+            details: Some(format!("Failed to access Cloud Storage bucket: {}", e)),
+        },
     }
 }
 
