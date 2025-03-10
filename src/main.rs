@@ -10,8 +10,8 @@ mod models;
 mod routes;
 mod services;
 
-// Diagnostic endpoint to help debug HTTP/2 issues
-async fn protocol_info(req: HttpRequest) -> impl Responder {
+// General request diagnostic endpoint
+async fn request_info(req: HttpRequest) -> impl Responder {
     let protocol = req.connection_info().scheme().to_string();
     let version = format!("{:?}", req.version());
 
@@ -68,11 +68,11 @@ async fn main() -> std::io::Result<()> {
     #[cfg(debug_assertions)]
     setup_credentials();
 
-    // Initialize logging with more detailed HTTP/2 logs
+    // Initialize logging
     env_logger::init_from_env(
-        Env::default().default_filter_or("info,actix_web=debug,actix_http=debug,h2=debug"),
+        Env::default().default_filter_or("info,actix_web=debug,actix_http=debug"),
     );
-    println!("Logger initialized with HTTP/2 debugging enabled");
+    println!("Logger initialized");
 
     if cfg!(debug_assertions) {
         dotenv::dotenv().ok();
@@ -95,7 +95,7 @@ async fn main() -> std::io::Result<()> {
     let client = db::mongo::create_mongo_client(&mongo_uri).await;
     println!("MongoDB connection established successfully");
 
-    // Create and configure the HTTP server with HTTP/2 support
+    // Create and configure the HTTP server (HTTP/1.1 only)
     HttpServer::new(move || {
         App::new()
             // Add middleware
@@ -122,7 +122,7 @@ async fn main() -> std::io::Result<()> {
             }))
             // Add diagnostic endpoints
             .route("/health", web::get().to(routes::health::health_check))
-            .route("/protocol-info", web::get().to(protocol_info))
+            .route("/request-info", web::get().to(request_info))
             .route(
                 "/",
                 web::get().to(|| async {
@@ -264,15 +264,13 @@ async fn main() -> std::io::Result<()> {
                     ),
             )
     })
-    // HTTP/2 configuration
+    // HTTP/1.1 configuration
     .bind(("0.0.0.0", port))?
     .server_hostname("actota-api") // Set a server hostname
-    .workers(4) // Use 4 workers for better concurrency
+    // Workers default to number of physical CPU cores (better for cloud environments)
     .keep_alive(std::time::Duration::from_secs(75)) // Set an appropriate keep-alive timeout
     .client_request_timeout(std::time::Duration::from_secs(60)) // Set request timeout
     .backlog(1024) // Increase the connection backlog for better performance under load
-    // .http2_keep_alive_interval(std::time::Duration::from_secs(20)) // HTTP/2 specific keep-alive
-    // .http2_max_concurrent_streams(250) // Allow more concurrent streams for HTTP/2
     .run()
     .await
 }
