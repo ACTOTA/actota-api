@@ -237,9 +237,14 @@ async fn main() -> std::io::Result<()> {
                             )
                             .service(
                                 web::scope("/itineraries")
+                                    // Public routes
                                     .route(
                                         "/featured",
                                         web::get().to(routes::featured_vacation::get_all),
+                                    )
+                                    .route(
+                                        "",
+                                        web::get().to(routes::itinerary::get_all),
                                     )
                                     // Protected routes
                                     .service(
