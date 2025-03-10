@@ -9,7 +9,7 @@ env:
   SERVICE_NAME: actota-api
   REGION: us-central1
   # Define these here for clarity, they will be accessed correctly in the job steps
-  NODE_ENV: ${{vars.NODE_ENV}}
+  RUST_ENV: ${{vars.RUST_ENV}}
   FACEBOOK_CLIENT_ID: ${{secrets.FACEBOOK_CLIENT_ID}}
   FACEBOOK_CLIENT_SECRET: ${{secrets.FACEBOOK_CLIENT_SECRET}}
   GOOGLE_APPLICATION_CREDENTIALS: ${{secrets.GOOGLE_APPLICATION_CREDENTIALS}}
@@ -40,7 +40,7 @@ jobs:
       - name: Build
         run: |
           docker build \
-            --build-arg NODE_ENV="${{ env.NODE_ENV }}" \
+            --build-arg RUST_ENV="${{ env.RUST_ENV }}" \
             --build-arg FACEBOOK_CLIENT_ID="${{ env.FACEBOOK_CLIENT_ID }}" \
             --build-arg FACEBOOK_CLIENT_SECRET="${{ env.FACEBOOK_CLIENT_SECRET }}" \
             --build-arg GOOGLE_APPLICATION_CREDENTIALS="${{ env.GOOGLE_APPLICATION_CREDENTIALS }}" \
@@ -81,7 +81,7 @@ jobs:
         - name: Build
           run: |
             docker build \
-            --build-arg NODE_ENV="${{ env.NODE_ENV }}" \
+            --build-arg RUST_ENV="${{ env.RUST_ENV }}" \
             --build-arg FACEBOOK_CLIENT_ID="${{ env.FACEBOOK_CLIENT_ID }}" \
             --build-arg FACEBOOK_CLIENT_SECRET="${{ env.FACEBOOK_CLIENT_SECRET }}" \
             --build-arg GOOGLE_APPLICATION_CREDENTIALS="${{ env.GOOGLE_APPLICATION_CREDENTIALS }}" \
