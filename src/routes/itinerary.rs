@@ -39,26 +39,25 @@ pub async fn get_by_id(path: web::Path<String>, data: web::Data<Arc<Client>>) ->
 */
 pub async fn get_all(data: web::Data<Arc<Client>>) -> impl Responder {
     let client = data.into_inner();
-    let collection = client.database("Itineraries").collection::<FeaturedVacation>("Featured");
-    
+    let collection = client
+        .database("Itineraries")
+        .collection::<FeaturedVacation>("Featured");
+
     // Get all itineraries
     let sort_options = doc! { "createdAt": -1 };
-    let cursor = collection.find(doc! {})
-        .sort(sort_options)
-        .limit(100)
-        .await;
-    
+    let cursor = collection.find(doc! {}).sort(sort_options).limit(100).await;
+
     match cursor {
         Ok(cursor) => match cursor.try_collect::<Vec<FeaturedVacation>>().await {
             Ok(itineraries) => {
                 if itineraries.is_empty() {
                     return HttpResponse::Ok().json(Vec::<FeaturedVacation>::new());
                 }
-                
+
                 // Process images for all itineraries
                 let processed_itineraries = get_images(itineraries).await;
                 HttpResponse::Ok().json(processed_itineraries)
-            },
+            }
             Err(err) => {
                 eprintln!("Failed to collect itineraries: {:?}", err);
                 return HttpResponse::InternalServerError().body("Failed to process itineraries");
