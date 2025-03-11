@@ -267,7 +267,6 @@ async fn main() -> std::io::Result<()> {
     // HTTP/1.1 configuration
     .bind(("0.0.0.0", port))?
     .server_hostname("actota-api") // Set a server hostname
-    // Workers default to number of physical CPU cores (better for cloud environments)
     .keep_alive(std::time::Duration::from_secs(75)) // Set an appropriate keep-alive timeout
     .client_request_timeout(std::time::Duration::from_secs(60)) // Set request timeout
     .backlog(1024) // Increase the connection backlog for better performance under load
