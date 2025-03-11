@@ -41,7 +41,7 @@ fn setup_credentials() {
         return;
     }
 
-    // Fall back to file-based credentials
+    // Fall back to file-based credentials for local development only
     let credentials_path = PathBuf::from("credentials/service-account.json");
     if credentials_path.exists() {
         println!(
@@ -53,11 +53,8 @@ fn setup_credentials() {
             credentials_path.to_str().unwrap_or_default(),
         );
     } else {
-        println!("Warning: No Google credentials found in environment or file system");
-        println!("Cloud Storage operations may fail without valid credentials");
+        println!("No explicit Google credentials found. Using default service account.");
     }
-
-    println!("Credentials setup complete");
 }
 
 #[actix_web::main]
