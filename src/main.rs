@@ -28,9 +28,10 @@ async fn request_info(req: HttpRequest) -> impl Responder {
     ))
 }
 
+// Setup credentials for local development
 #[cfg(debug_assertions)]
 fn setup_credentials() {
-    println!("Setting up Google Cloud credentials");
+    println!("Setting up Google Cloud credentials for development");
 
     // Check if credentials are already set in the environment
     if let Ok(existing_creds) = env::var("GOOGLE_APPLICATION_CREDENTIALS") {
@@ -38,6 +39,14 @@ fn setup_credentials() {
             "Using Google credentials from environment variable: {}",
             existing_creds
         );
+        
+        // For cloud-storage crate compatibility, also set SERVICE_ACCOUNT_JSON
+        // if the credentials file exists and can be read
+        if let Ok(creds_content) = std::fs::read_to_string(&existing_creds) {
+            env::set_var("SERVICE_ACCOUNT_JSON", creds_content);
+            println!("Set SERVICE_ACCOUNT_JSON from credentials file");
+        }
+        
         return;
     }
 
@@ -48,12 +57,35 @@ fn setup_credentials() {
             "Using Google credentials from file: {}",
             credentials_path.display()
         );
+        
+        // Set path-based credential variable
         env::set_var(
             "GOOGLE_APPLICATION_CREDENTIALS",
             credentials_path.to_str().unwrap_or_default(),
         );
+        
+        // For cloud-storage crate compatibility, also set SERVICE_ACCOUNT_JSON
+        if let Ok(creds_content) = std::fs::read_to_string(&credentials_path) {
+            env::set_var("SERVICE_ACCOUNT_JSON", creds_content);
+            println!("Set SERVICE_ACCOUNT_JSON from credentials file");
+        }
     } else {
         println!("No explicit Google credentials found. Using default service account.");
+        // Set empty SERVICE_ACCOUNT_JSON to bypass file reading in cloud-storage
+        env::set_var("SERVICE_ACCOUNT_JSON", "{}");
+    }
+}
+
+// Setup credentials for production environment
+#[cfg(not(debug_assertions))]
+fn setup_credentials() {
+    println!("Setting up Google Cloud credentials for production");
+    
+    // For cloud-storage crate compatibility in production (Cloud Run)
+    // Enable ADC usage by setting empty SERVICE_ACCOUNT_JSON if not already set
+    if env::var("SERVICE_ACCOUNT_JSON").is_err() && env::var("GOOGLE_APPLICATION_CREDENTIALS_JSON").is_err() {
+        println!("Setting empty SERVICE_ACCOUNT_JSON to enable ADC for cloud-storage");
+        env::set_var("SERVICE_ACCOUNT_JSON", "{}");
     }
 }
 
@@ -61,8 +93,7 @@ fn setup_credentials() {
 async fn main() -> std::io::Result<()> {
     println!("Application starting...");
 
-    // Setup credentials for local development
-    #[cfg(debug_assertions)]
+    // Setup credentials for both development and production
     setup_credentials();
 
     // Initialize logging
