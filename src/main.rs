@@ -39,14 +39,14 @@ fn setup_credentials() {
             "Using Google credentials from environment variable: {}",
             existing_creds
         );
-        
+
         // For cloud-storage crate compatibility, also set SERVICE_ACCOUNT_JSON
         // if the credentials file exists and can be read
         if let Ok(creds_content) = std::fs::read_to_string(&existing_creds) {
             env::set_var("SERVICE_ACCOUNT_JSON", creds_content);
             println!("Set SERVICE_ACCOUNT_JSON from credentials file");
         }
-        
+
         return;
     }
 
@@ -57,13 +57,13 @@ fn setup_credentials() {
             "Using Google credentials from file: {}",
             credentials_path.display()
         );
-        
+
         // Set path-based credential variable
         env::set_var(
             "GOOGLE_APPLICATION_CREDENTIALS",
             credentials_path.to_str().unwrap_or_default(),
         );
-        
+
         // For cloud-storage crate compatibility, also set SERVICE_ACCOUNT_JSON
         if let Ok(creds_content) = std::fs::read_to_string(&credentials_path) {
             env::set_var("SERVICE_ACCOUNT_JSON", creds_content);
@@ -80,13 +80,53 @@ fn setup_credentials() {
 #[cfg(not(debug_assertions))]
 fn setup_credentials() {
     println!("Setting up Google Cloud credentials for production");
-    
-    // For cloud-storage crate compatibility in production (Cloud Run)
-    // Enable ADC usage by setting empty SERVICE_ACCOUNT_JSON if not already set
-    if env::var("SERVICE_ACCOUNT_JSON").is_err() && env::var("GOOGLE_APPLICATION_CREDENTIALS_JSON").is_err() {
-        println!("Setting empty SERVICE_ACCOUNT_JSON to enable ADC for cloud-storage");
-        env::set_var("SERVICE_ACCOUNT_JSON", "{}");
+
+    // For cloud-storage crate compatibility in production (Cloud Run),
+    // we need to handle the case where credentials are provided via ADC
+    // (Application Default Credentials) rather than as a file.
+
+    // Check if SERVICE_ACCOUNT_JSON is already set
+    if let Ok(json_content) = env::var("SERVICE_ACCOUNT_JSON") {
+        println!("Using SERVICE_ACCOUNT_JSON from environment variable");
+        return;
     }
+
+    // Check if GOOGLE_APPLICATION_CREDENTIALS_JSON is set (contains the actual JSON)
+    if let Ok(json_content) = env::var("GOOGLE_APPLICATION_CREDENTIALS_JSON") {
+        println!("Using GOOGLE_APPLICATION_CREDENTIALS_JSON content");
+        env::set_var("SERVICE_ACCOUNT_JSON", json_content);
+        return;
+    }
+
+    // Check if GOOGLE_APPLICATION_CREDENTIALS points to a file
+    if let Ok(creds_path) = env::var("GOOGLE_APPLICATION_CREDENTIALS") {
+        println!(
+            "Using credentials from GOOGLE_APPLICATION_CREDENTIALS: {}",
+            creds_path
+        );
+
+        // For cloud-storage crate compatibility:
+        // If the file exists, read its content and set SERVICE_ACCOUNT_JSON
+        match std::fs::read_to_string(&creds_path) {
+            Ok(content) => {
+                println!("Read credentials file successfully");
+                env::set_var("SERVICE_ACCOUNT_JSON", content);
+            }
+            Err(e) => {
+                println!("Warning: Could not read credentials file: {}", e);
+                // We're in Cloud Run, so likely using ADC - set a null string to prevent file access
+                env::set_var("SERVICE_ACCOUNT_JSON", "{}");
+                // Also set GOOGLE_APPLICATION_CREDENTIALS to a special value
+                env::set_var("GOOGLE_APPLICATION_CREDENTIALS", "use-adc");
+            }
+        }
+        return;
+    }
+
+    // If none of the above, we're using ADC in Cloud Run
+    println!("No explicit credentials found. Using Application Default Credentials (ADC)");
+    env::set_var("SERVICE_ACCOUNT_JSON", "{}");
+    env::set_var("GOOGLE_APPLICATION_CREDENTIALS", "use-adc");
 }
 
 #[actix_web::main]
