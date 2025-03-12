@@ -67,6 +67,7 @@ jobs:
             --region ${{ env.REGION }} \
             --platform managed \
             --service-account=actota-api@${PROJECT_ID}.iam.gserviceaccount.com \
+            --set-env-vars="SERVICE_ACCOUNT_JSON={}" \
             --allow-unauthenticated \
             --use-http1
   deploy-prod:
@@ -108,5 +109,7 @@ jobs:
               --image gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:$GITHUB_SHA \
               --region ${{ env.REGION }} \
               --platform managed \
+              --service-account=actota-api@${PROJECT_ID}.iam.gserviceaccount.com \
+              --set-env-vars="SERVICE_ACCOUNT_JSON={}" \
               --allow-unauthenticated \
               --use-http1
