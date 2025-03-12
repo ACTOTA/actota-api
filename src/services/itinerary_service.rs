@@ -8,36 +8,27 @@ use std::path::Path;
 use tokio::pin;
 
 async fn create_configured_storage_client() -> StorageClient {
-    // In Cloud Run or other GCP environments, the ADC will be available by default
-    // We just need to ensure we're not overriding it with the SERVICE_ACCOUNT_JSON setting
+    // Diagnostic logging
+    println!("Cloud Storage authentication setup:");
+    println!(
+        "  GOOGLE_APPLICATION_CREDENTIALS present: {}",
+        std::env::var("GOOGLE_APPLICATION_CREDENTIALS").is_ok()
+    );
+    println!(
+        "  SERVICE_ACCOUNT_JSON present: {}",
+        std::env::var("SERVICE_ACCOUNT_JSON").is_ok()
+    );
 
-    // If SERVICE_ACCOUNT_JSON environment variable contains a valid JSON service account (not "{}")
-    if let Ok(json_content) = std::env::var("SERVICE_ACCOUNT_JSON") {
-        if json_content != "{}" && json_content.contains("\"type\":") {
-            println!("Using explicit SERVICE_ACCOUNT_JSON credentials");
-            // This is your existing code for handling SERVICE_ACCOUNT_JSON
-            use std::io::Write;
-            let temp_dir = std::env::temp_dir();
-            let temp_file_path = temp_dir.join("temp_service_account.json");
-
-            if let Ok(mut file) = std::fs::File::create(&temp_file_path) {
-                if let Err(e) = file.write_all(json_content.as_bytes()) {
-                    println!("Warning: Failed to write credentials to temp file: {}", e);
-                } else {
-                    std::env::set_var(
-                        "GOOGLE_APPLICATION_CREDENTIALS",
-                        temp_file_path.to_string_lossy().to_string(),
-                    );
-                }
-            }
-        } else {
-            println!("Empty SERVICE_ACCOUNT_JSON detected, using ADC");
-        }
-    } else {
-        println!("No SERVICE_ACCOUNT_JSON found, using ADC");
+    // Force cloud_storage to use ADC by setting empty credentials
+    // This is necessary because the crate requires SERVICE_ACCOUNT_JSON
+    // to be set, even when we want to use ADC
+    if std::env::var("SERVICE_ACCOUNT_JSON").is_err() {
+        println!("Setting SERVICE_ACCOUNT_JSON to empty object to enable ADC");
+        std::env::set_var("SERVICE_ACCOUNT_JSON", "{}");
     }
 
-    // Create the client using default settings, which will use ADC if no service account specified
+    // Create the client using default settings, which will use ADC
+    // when SERVICE_ACCOUNT_JSON is empty
     StorageClient::default()
 }
 
