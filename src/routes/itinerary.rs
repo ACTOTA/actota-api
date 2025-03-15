@@ -1,6 +1,9 @@
 use crate::models::search::SearchItinerary;
 use crate::services::itinerary_search_service::search_itineraries;
-use crate::{models::itinerary::FeaturedVacation, services::itinerary_service::get_images};
+use crate::{
+    models::itinerary::{Activity, FeaturedVacation},
+    services::itinerary_service::get_images,
+};
 use actix_web::{web, HttpResponse, Responder};
 use bson::doc;
 use futures::TryStreamExt;
@@ -103,7 +106,16 @@ pub async fn get_all(
                 children: search_query.children.unwrap_or(0),
                 infants: search_query.infants.unwrap_or(0),
                 pets: 0,
-                activities: search_query.activities.unwrap_or_default(),
+                activities: search_query
+                    .activities
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|label| Activity {
+                        label,
+                        description: String::new(),
+                        tags: Vec::new(),
+                    })
+                    .collect(),
                 lodging: search_query.lodging.unwrap_or_default(),
                 transportation: search_query.transportation.unwrap_or_default(),
                 budger_per_person: None,
@@ -113,7 +125,7 @@ pub async fn get_all(
             };
 
             // Log the search asynchronously (don't wait for result)
-            let log_client = Arc::clone(&client);
+            let _log_client = Arc::clone(&client);
             tokio::spawn(async move {
                 match submission_collection.insert_one(&search_log).await {
                     Ok(_) => println!("Search query logged successfully"),

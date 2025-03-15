@@ -17,7 +17,7 @@ pub struct ItinerarySubmission {
     pub children: u32,
     pub infants: u32,
     pub pets: u32,
-    pub activities: Vec<String>,
+    pub activities: Vec<Activity>,
     pub lodging: Vec<String>,
     pub transportation: String,
     pub budger_per_person: Option<f32>,
@@ -76,7 +76,7 @@ pub struct ActivityLocation {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Activity {
-    label: String,
-    description: String,
-    tags: Vec<String>,
+    pub label: String,
+    pub description: String,
+    pub tags: Vec<String>,
 }

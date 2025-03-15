@@ -28,27 +28,75 @@ pub async fn search_itineraries(
         }
     }
 
+    // Handle activity and lodging filters
+    let mut or_conditions = Vec::new();
+    
+    // Activity filtering
     if let Some(activities) = &search_params.activities {
         if !activities.is_empty() {
-            // Look for activities matching any of the requested ones
-            filter.insert(
-                "activities.label",
-                doc! { "$in": activities
+            let activities_lowercase: Vec<String> = activities
                 .iter()
                 .map(|s| s.to_lowercase())
-                .collect::<Vec<String>>() },
-            );
+                .collect();
+            
+            // Create a condition that matches itineraries where any activity label matches any of the requested activities
+            // We're using case-insensitive matching by converting both sides to lowercase
+            let activity_filter = doc! {
+                "$or": activities_lowercase.iter().map(|activity| {
+                    doc! {
+                        "activities": {
+                            "$elemMatch": {
+                                "label": { 
+                                    "$regex": activity, 
+                                    "$options": "i"  // case-insensitive match
+                                }
+                            }
+                        }
+                    }
+                }).collect::<Vec<_>>()
+            };
+            
+            or_conditions.push(activity_filter);
         }
     }
 
+    // Lodging filtering
     if let Some(lodging) = &search_params.lodging {
         if !lodging.is_empty() {
-            // This would need to be adjusted based on how lodging is stored in the itinerary
-            // For now, assuming there might be lodging tags in activities
-            filter.insert(
-                "activities.tags",
-                doc! { "$in": lodging.iter().map(|s| s.to_lowercase()).collect::<Vec<String>>() },
-            );
+            let lodging_lowercase: Vec<String> = lodging
+                .iter()
+                .map(|s| s.to_lowercase())
+                .collect();
+            
+            // Create a condition that matches itineraries where any activity has tags matching any of the requested lodging types
+            let lodging_filter = doc! {
+                "$or": lodging_lowercase.iter().map(|lodging_type| {
+                    doc! {
+                        "activities": {
+                            "$elemMatch": {
+                                "tags": { 
+                                    "$regex": lodging_type, 
+                                    "$options": "i"  // case-insensitive match
+                                }
+                            }
+                        }
+                    }
+                }).collect::<Vec<_>>()
+            };
+            
+            or_conditions.push(lodging_filter);
+        }
+    }
+    
+    // Add conditions to the filter
+    if !or_conditions.is_empty() {
+        if or_conditions.len() == 1 {
+            // If only one condition type was specified (either activities or lodging),
+            // add it directly to the filter
+            filter.extend(or_conditions[0].clone());
+        } else {
+            // If both activities and lodging were specified, use $or to match either
+            filter.insert("$or", or_conditions);
         }
     }
 
