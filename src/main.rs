@@ -284,7 +284,11 @@ async fn main() -> std::io::Result<()> {
                                         "/featured",
                                         web::get().to(routes::featured_vacation::get_all),
                                     )
+                                    // Get all itineraries or search with filters
                                     .route("", web::get().to(routes::itinerary::get_all))
+                                    .route("", web::post().to(routes::itinerary::get_all))
+                                    // Public route for getting itinerary by ID
+                                    .route("/{id}", web::get().to(routes::itinerary::get_by_id))
                                     // Protected routes
                                     .service(
                                         web::scope("")
@@ -296,10 +300,6 @@ async fn main() -> std::io::Result<()> {
                                             .route(
                                                 "/find",
                                                 web::post().to(routes::dream_vacation::find),
-                                            )
-                                            .route(
-                                                "/{id}",
-                                                web::get().to(routes::itinerary::get_by_id),
                                             ),
                                     ),
                             ),
