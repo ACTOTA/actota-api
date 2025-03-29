@@ -24,7 +24,7 @@ pub async fn add_booking(
 
     // Verify itinerary exists in the database
     let itinerary: mongodb::Collection<FeaturedVacation> =
-        client.database("Itinerary").collection("Featured");
+        client.database("Itineraries").collection("Featured");
 
     if itinerary
         .find_one(doc! { "_id": ObjectId::parse_str(&itinerary_id).unwrap() })
@@ -35,7 +35,7 @@ pub async fn add_booking(
     }
 
     let collection: mongodb::Collection<Booking> =
-        client.database("Account").collection("bookings");
+        client.database("Account").collection("Bookings");
 
     let filter = doc! {
         "user_id": ObjectId::parse_str(&claims.user_id).unwrap(),
@@ -83,7 +83,7 @@ pub async fn remove_booking(
 ) -> impl Responder {
     let client = data.into_inner();
     let collection: mongodb::Collection<Booking> =
-        client.database("Account").collection("bookings");
+        client.database("Account").collection("Bookings");
 
     let (user_id, itinerary_id) = path.into_inner();
     if user_id != claims.user_id {
@@ -104,3 +104,79 @@ pub async fn remove_booking(
         }
     }
 }
+
+pub async fn get_bookings(
+    data: web::Data<Arc<Client>>,
+    claims: Claims,
+    path: web::Path<(String,)>,
+) -> impl Responder {
+    if path.into_inner().0 != claims.user_id {
+        return HttpResponse::Forbidden().body("Forbidden");
+    }
+
+    let client = data.into_inner();
+    let collection: mongodb::Collection<Booking> =
+        client.database("Account").collection("Bookings");
+
+    let filter = doc! {
+        "user_id": ObjectId::parse_str(&claims.user_id).unwrap(),
+    };
+
+    match collection.find(filter).await {
+        Ok(cursor) => {
+            let results = cursor.try_collect::<Vec<Booking>>().await;
+            match results {
+                Ok(bookings) => {
+                    // Extract itinerary IDs from bookings
+                    let itinerary_ids: Vec<ObjectId> = bookings
+                        .iter()
+                        .map(|booking| booking.itinerary_id.clone())
+                        .collect();
+
+                    // Fetch itineraries from Itineraries.Featured collection
+                    let itineraries_collection: mongodb::Collection<FeaturedVacation> =
+                        client.database("Itineraries").collection("Featured");
+
+                    let itinerary_filter = doc! {
+                        "_id": { "$in": itinerary_ids }
+                    };
+
+                    match itineraries_collection.find(itinerary_filter).await {
+                        Ok(itinerary_cursor) => {
+                            match itinerary_cursor
+                                .try_collect::<Vec<FeaturedVacation>>()
+                                .await
+                            {
+                                Ok(mut featured_itineraries) => {
+                                    // Fetch images for each itinerary
+                                    featured_itineraries = get_images(featured_itineraries).await;
+
+                                    HttpResponse::Ok().json(featured_itineraries)
+                                }
+                                Err(err) => {
+                                    eprintln!("Error fetching itineraries: {:?}", err);
+                                    HttpResponse::InternalServerError()
+                                        .body("Failed to retrieve itineraries")
+                                }
+                            }
+                        }
+                        Err(err) => {
+                            eprintln!("Error fetching itineraries: {:?}", err);
+                            HttpResponse::InternalServerError()
+                                .body("Failed to retrieve itineraries")
+                        }
+                    }
+                }
+                Err(err) => {
+                    eprintln!("Error retrieving bookings: {:?}", err);
+                    HttpResponse::InternalServerError().body("Failed to retrieve bookings")
+                }
+            }
+        }
+        Err(err) => {
+            eprintln!("Error fetching bookings: {:?}", err);
+            HttpResponse::InternalServerError().body("Failed to fetch bookings")
+        }
+    }
+}
+
