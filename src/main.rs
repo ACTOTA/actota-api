@@ -216,7 +216,7 @@ async fn main() -> std::io::Result<()> {
                             )
                             .route(
                                 "/{id}",
-                                web::get()
+                                web::post()
                                     .to(routes::account::account_info::update_personal_information),
                             )
                             .route(
@@ -230,6 +230,18 @@ async fn main() -> std::io::Result<()> {
                             .route(
                                 "/{id}/favorites/{itinerary_id}",
                                 web::delete().to(routes::account::favorites::remove_favorite),
+                            )
+                            .route(
+                                "/{id}/bookings",
+                                web::get().to(routes::account::bookings::get_bookings),
+                            )
+                            .route(
+                                "/{id}/bookings/{itinerary_id}",
+                                web::post().to(routes::account::bookings::add_booking),
+                            )
+                            .route(
+                                "/{id}/bookings/{itinerary_id}",
+                                web::delete().to(routes::account::bookings::remove_booking),
                             )
                             .route(
                                 "/{id}/payment-methods",
