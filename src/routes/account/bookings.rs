@@ -1,6 +1,6 @@
 use crate::{
     middleware::auth::Claims,
-    models::{account::Favorite, itinerary::FeaturedVacation},
+    models::{bookings::Booking, itinerary::FeaturedVacation},
     services::itinerary_service::get_images,
 };
 use actix_web::{web, HttpResponse, Responder};
@@ -9,7 +9,7 @@ use futures::TryStreamExt;
 use mongodb::Client;
 use std::sync::Arc;
 
-pub async fn add_favorite(
+pub async fn add_booking(
     data: web::Data<Arc<Client>>,
     path: web::Path<(String, String)>,
     claims: Claims,
@@ -25,6 +25,7 @@ pub async fn add_favorite(
     // Verify itinerary exists in the database
     let itinerary: mongodb::Collection<FeaturedVacation> =
         client.database("Itineraries").collection("Featured");
+
     if itinerary
         .find_one(doc! { "_id": ObjectId::parse_str(&itinerary_id).unwrap() })
         .await
@@ -33,8 +34,8 @@ pub async fn add_favorite(
         return HttpResponse::NotFound().body("Itinerary not found");
     }
 
-    let collection: mongodb::Collection<Favorite> =
-        client.database("Account").collection("Favorites");
+    let collection: mongodb::Collection<Booking> =
+        client.database("Account").collection("Bookings");
 
     let filter = doc! {
         "user_id": ObjectId::parse_str(&claims.user_id).unwrap(),
@@ -43,45 +44,46 @@ pub async fn add_favorite(
 
     match collection.find_one(filter).await {
         Ok(Some(_)) => {
-            // Already a favorite
-            return HttpResponse::Conflict().body("Favorite already exists");
+            // Already a booking
+            return HttpResponse::Conflict().body("Booking already exists");
         }
         Ok(None) => {
-            // Not a favorite yet
-            // Add the favorite
+            // Not a booking yet
+            // Add the booking
             let time = chrono::Utc::now();
 
-            let favorite = Favorite {
+            let booking = Booking {
                 id: None,
                 user_id: ObjectId::parse_str(&claims.user_id).unwrap(),
                 itinerary_id: ObjectId::parse_str(&itinerary_id).unwrap(),
+                status: "ongoing".to_string(),
                 created_at: Some(time),
                 updated_at: Some(time),
             };
 
-            match collection.insert_one(&favorite).await {
+            match collection.insert_one(&booking).await {
                 Ok(_) => {
-                    return HttpResponse::Ok().body("Itinerary added to favorites");
+                    return HttpResponse::Ok().body("Booking created for user");
                 }
                 Err(_) => {
-                    return HttpResponse::InternalServerError().body("Failed to add favorite");
+                    return HttpResponse::InternalServerError().body("Failed to add booking");
                 }
             }
         }
         Err(_) => {
-            return HttpResponse::InternalServerError().body("Failed to check for favorite");
+            return HttpResponse::InternalServerError().body("Failed to check for bookings");
         }
     }
 }
 
-pub async fn remove_favorite(
+pub async fn remove_booking(
     data: web::Data<Arc<Client>>,
     path: web::Path<(String, String)>,
     claims: Claims,
 ) -> impl Responder {
     let client = data.into_inner();
-    let collection: mongodb::Collection<Favorite> =
-        client.database("Account").collection("Favorites");
+    let collection: mongodb::Collection<Booking> =
+        client.database("Account").collection("Bookings");
 
     let (user_id, itinerary_id) = path.into_inner();
     if user_id != claims.user_id {
@@ -95,15 +97,15 @@ pub async fn remove_favorite(
 
     match collection.delete_one(filter).await {
         Ok(_) => {
-            return HttpResponse::Ok().body("Removed Favorite");
+            return HttpResponse::Ok().body("Removed Booking");
         }
         Err(_) => {
-            return HttpResponse::InternalServerError().body("Failed to remove favorite");
+            return HttpResponse::InternalServerError().body("Failed to remove booking");
         }
     }
 }
 
-pub async fn get_favorites(
+pub async fn get_bookings(
     data: web::Data<Arc<Client>>,
     claims: Claims,
     path: web::Path<(String,)>,
@@ -113,8 +115,8 @@ pub async fn get_favorites(
     }
 
     let client = data.into_inner();
-    let collection: mongodb::Collection<Favorite> =
-        client.database("Account").collection("Favorites");
+    let collection: mongodb::Collection<Booking> =
+        client.database("Account").collection("Bookings");
 
     let filter = doc! {
         "user_id": ObjectId::parse_str(&claims.user_id).unwrap(),
@@ -122,13 +124,13 @@ pub async fn get_favorites(
 
     match collection.find(filter).await {
         Ok(cursor) => {
-            let results = cursor.try_collect::<Vec<Favorite>>().await;
+            let results = cursor.try_collect::<Vec<Booking>>().await;
             match results {
-                Ok(favorites) => {
-                    // Extract itinerary IDs from favorites
-                    let itinerary_ids: Vec<ObjectId> = favorites
+                Ok(bookings) => {
+                    // Extract itinerary IDs from bookings
+                    let itinerary_ids: Vec<ObjectId> = bookings
                         .iter()
-                        .map(|favorite| favorite.itinerary_id.clone())
+                        .map(|booking| booking.itinerary_id.clone())
                         .collect();
 
                     // Fetch itineraries from Itineraries.Featured collection
@@ -166,14 +168,15 @@ pub async fn get_favorites(
                     }
                 }
                 Err(err) => {
-                    eprintln!("Error retrieving favorites: {:?}", err);
-                    HttpResponse::InternalServerError().body("Failed to retrieve favorites")
+                    eprintln!("Error retrieving bookings: {:?}", err);
+                    HttpResponse::InternalServerError().body("Failed to retrieve bookings")
                 }
             }
         }
         Err(err) => {
-            eprintln!("Error fetching favorites: {:?}", err);
-            HttpResponse::InternalServerError().body("Failed to fetch favorites")
+            eprintln!("Error fetching bookings: {:?}", err);
+            HttpResponse::InternalServerError().body("Failed to fetch bookings")
         }
     }
 }
+

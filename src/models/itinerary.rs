@@ -66,6 +66,8 @@ pub struct Day {
     time: NaiveTime,
     location: ActivityLocation,
     name: String,
+    #[serde(rename = "type")]
+    item_type: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
