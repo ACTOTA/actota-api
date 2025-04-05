@@ -60,6 +60,8 @@ pub async fn signin(data: web::Data<Arc<Client>>, input: web::Json<User>) -> imp
     let client = data.into_inner();
     let collection: mongodb::Collection<User> = client.database("Account").collection("Users");
 
+    println!("Input: {:?}", input);
+
     let doc = input.into_inner();
     let email = doc.email;
 
