@@ -6,13 +6,13 @@ use futures::{StreamExt, TryStreamExt};
 use mongodb::Client;
 use std::{env, str::FromStr, sync::Arc};
 
-use crate::{middleware::auth::Claims, models::account::User};
+use crate::{middleware::auth::Claims, models::account::{PersonalInformation, User}};
 
 pub async fn update_personal_information(
     data: web::Data<Arc<Client>>,
     claims: Claims,
     path: web::Path<(String,)>,
-    // input: web::Json<User>,
+    input: web::Json<PersonalInformation>,
 ) -> impl Responder {
     let user_id = path.into_inner().0;
     if user_id != claims.user_id {
@@ -20,6 +20,8 @@ pub async fn update_personal_information(
     }
 
     let client = data.into_inner();
+
+    let personal_info = input.into_inner();
 
     let collection: mongodb::Collection<User> = client.database("Account").collection("Users");
 
@@ -35,15 +37,40 @@ pub async fn update_personal_information(
         Err(_) => return HttpResponse::InternalServerError().body("Failed to find user"),
     };
 
+    // Directly update top-level fields if provided in input
+    if let Some(email) = personal_info.email {
+        user.email = email;
+    }
+    if let Some(password) = personal_info.password {
+        user.password = bcrypt::hash(&password, bcrypt::DEFAULT_COST)
+            .unwrap_or(user.password.clone());
+    }
+    if let Some(first_name  ) = personal_info.first_name {
+        user.first_name = Some(first_name);
+    }
+    if let Some(last_name) = personal_info.last_name {
+        user.last_name = Some(last_name);
+    }
+    if let Some(phone_number) = personal_info.phone_number {
+        user.phone_number = Some(phone_number);
+    }
+    if let Some(birth_date) = personal_info.birth_date {
+        user.birth_date = Some(birth_date);
+    }
+
     user.updated_at = Some(chrono::Utc::now());
     // let mut info = input.into_inner();
     // info.updated_at = Some(chrono::Utc::now());
 
     let updates = bson::to_document(&user).unwrap();
+    let update_doc = doc! { "$set": updates }; // $set is a MongoDB operator to update fields
 
-    match collection.update_one(filter, updates).await {
-        Ok(_) => {
+    match collection.update_one(filter, update_doc).await {
+        Ok(result) if result.modified_count > 0 => {
             return HttpResponse::Ok().body("User information updated");
+        }
+        Ok(_) => {
+            HttpResponse::NotModified().body("No changes applied")
         }
         Err(_) => {
             return HttpResponse::InternalServerError().body("Failed to update user information")

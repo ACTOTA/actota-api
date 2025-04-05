@@ -216,7 +216,7 @@ async fn main() -> std::io::Result<()> {
                             )
                             .route(
                                 "/{id}",
-                                web::post()
+                                web::put()
                                     .to(routes::account::account_info::update_personal_information),
                             )
                             .route(
