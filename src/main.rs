@@ -233,7 +233,11 @@ async fn main() -> std::io::Result<()> {
                             )
                             .route(
                                 "/{id}/bookings",
-                                web::get().to(routes::account::bookings::get_bookings),
+                                web::get().to(routes::account::bookings::get_all_bookings),
+                            )
+                            .route(
+                                "/{id}/bookings/{itinerary_id}",
+                                web::get().to(routes::account::bookings::get_booking),
                             )
                             .route(
                                 "/{id}/bookings/{itinerary_id}",
