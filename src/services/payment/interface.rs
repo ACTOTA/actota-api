@@ -6,6 +6,7 @@ pub enum CustomerError {
     NotFound,
     InternalServerError,
 }
+#[derive(Debug)]
 pub enum PaymentError {
     NotFound,
     InternalServerError,

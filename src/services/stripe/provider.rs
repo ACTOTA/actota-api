@@ -141,23 +141,41 @@ impl PaymentOperations for StripeProvider {
             payment_id
         );
 
-        let params = [("customer", customer_id)];
+        println!("Detaching payment method: {} from customer: {}", payment_id, customer_id);
+        println!("URL: {}", url);
 
+        // For detach operation in Stripe, we don't need to send the customer_id
+        // The payment method already knows which customer it's attached to
         let res = match client
-            .delete(&url)
+            .post(&url)  // Stripe uses POST not DELETE for the detach operation
             .header("Authorization", format!("Bearer {}", api_key))
-            .form(&params)
             .send()
             .await
         {
             Ok(res) => res,
-            Err(_) => return Err(PaymentError::InternalServerError),
+            Err(err) => {
+                eprintln!("Request error: {:?}", err);
+                return Err(PaymentError::InternalServerError);
+            }
         };
 
-        if res.status().is_success() {
+        // Get the response body for better error logging
+        let status = res.status();
+        let body = match res.text().await {
+            Ok(body) => body,
+            Err(err) => {
+                eprintln!("Failed to read response body: {:?}", err);
+                return Err(PaymentError::InternalServerError);
+            }
+        };
+        
+        println!("Response status: {}, body: {}", status, body);
+
+        if status.is_success() {
             return Ok(HttpResponse::Ok().body("Payment method deleted"));
         } else {
-            return Ok(HttpResponse::InternalServerError().body("Failed to delete payment method"));
+            eprintln!("Stripe error: {}", body);
+            return Ok(HttpResponse::InternalServerError().body(format!("Failed to delete payment method: {}", body)));
         }
     }
 }
