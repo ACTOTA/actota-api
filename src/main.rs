@@ -263,15 +263,19 @@ async fn main() -> std::io::Result<()> {
                                     .to(routes::account::payment_methods::get_or_create_customer),
                             )
                             .route(
-                                "/{id}/attach-payment-method",
-                                web::post()
-                                    .to(routes::account::payment_methods::attach_payment_method),
-                            )
-                            .route(
-                                "/{id}/detach-payment-method",
-                                web::post()
-                                    .to(routes::account::payment_methods::detach_payment_method),
-                            ),
+                                "/{id}/payment-methods/{pm_id}",
+                                web::delete()
+                                    .to(routes::account::payment_methods::remove_payment_method),
+                            ), // .route(
+                               //     "/{id}/attach-payment-method",
+                               //     web::post()
+                               //         .to(routes::account::payment_methods::attach_payment_method),
+                               // )
+                               // .route(
+                               //     "/{id}/detach-payment-method",
+                               //     web::post()
+                               //         .to(routes::account::payment_methods::detach_payment_method),
+                               // ),
                     )
                     .service(
                         web::scope("")
