@@ -38,4 +38,11 @@ pub trait PaymentOperations {
         customer_id: String,
         payment_id: String,
     ) -> Result<HttpResponse, PaymentError>;
+
+    async fn create_payment_intent(
+        &self,
+        amount: i64,
+        customer_id: &str,
+        payment_method_id: &str,
+    ) -> Result<stripe::PaymentIntent, PaymentError>;
 }
