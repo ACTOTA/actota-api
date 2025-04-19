@@ -21,7 +21,7 @@ pub trait PaymentOperations {
         customer: CustomerData,
     ) -> Result<CustomerData, CustomerError>;
 
-    async fn get_payment_method(&self, payment_id: String) -> Result<PaymentMethod, PaymentError>;
+    // async fn get_payment_method(&self, payment_id: String) -> Result<PaymentMethod, PaymentError>;
     async fn get_cust_payment_methods(
         &self,
         customer_id: String,
