@@ -76,6 +76,58 @@ pub async fn add_booking(
     }
 }
 
+pub async fn update_booking(
+    data: web::Data<Arc<Client>>,
+    claims: Claims,
+    path: web::Path<(String, String)>,
+    input: web::Json<Booking>,
+) -> impl Responder {
+
+    // Get the booking_id from the path
+    let (user_id, booking_id) = path.into_inner();
+    if user_id != claims.user_id {
+        return HttpResponse::Forbidden().body("Forbidden");
+    }
+
+    let client = data.into_inner();
+
+    let new_booking = input.into_inner();
+
+    // Verify booking exists in the database
+    let collection: mongodb::Collection<Booking> =
+        client.database("Account").collection("Bookings");
+
+    let filter = doc! { "_id": ObjectId::parse_str(&booking_id).unwrap() };
+
+    let mut curr_booking = match collection.find_one(filter.clone()).await {
+        Ok(curr_booking) => match curr_booking {
+            Some(curr_booking) => curr_booking,
+            None => return HttpResponse::NotFound().body("booking not found"),
+        },
+        Err(_) => return HttpResponse::InternalServerError().body("Failed to find booking"),
+    };
+
+
+    curr_booking = new_booking;
+    curr_booking.id = Some(ObjectId::parse_str(&booking_id).unwrap());
+    curr_booking.updated_at = Some(chrono::Utc::now());
+
+    let updates = bson::to_document(&curr_booking).unwrap();
+    let update_doc = doc! { "$set": updates }; // $set is a MongoDB operator to update fields
+
+    match collection.update_one(filter, update_doc).await {
+        Ok(result) if result.modified_count > 0 => {
+            return HttpResponse::Ok().body("booking information updated");
+        }
+        Ok(_) => {
+            HttpResponse::NotModified().body("No changes applied")
+        }
+        Err(_) => {
+            return HttpResponse::InternalServerError().body("Failed to update booking information")
+        }
+    }
+}
+
 pub async fn remove_booking(
     data: web::Data<Arc<Client>>,
     path: web::Path<(String, String)>,
