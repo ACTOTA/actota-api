@@ -44,6 +44,13 @@ impl PaymentOperations for StripeProvider {
             Err(_) => Err(CustomerError::NotFound),
         }
     }
+    async fn update_customer(
+        &self,
+        customer_id: String,
+        customer: CustomerData,
+    ) -> Result<CustomerData, CustomerError> {
+        todo!()
+    }
 
     async fn get_cust_payment_methods(
         &self,
