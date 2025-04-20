@@ -206,6 +206,14 @@ async fn main() -> std::io::Result<()> {
                             )),
                     )
                     .service(
+                        web::scope("payment")
+                            .wrap(middleware::auth::AuthMiddleware)
+                            .route(
+                                "/payment-intent",
+                                web::post().to(routes::payment::create_payment_intent),
+                            ),
+                    )
+                    .service(
                         // Protected routes
                         web::scope("/account")
                             .wrap(middleware::auth::AuthMiddleware)
