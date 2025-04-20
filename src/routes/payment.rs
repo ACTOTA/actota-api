@@ -1,6 +1,7 @@
-use actix_web::{web, HttpResponse, Responder};
+use actix_web::{web, HttpRequest, HttpResponse, Responder};
 use serde::{Deserialize, Serialize};
 use std::{str::FromStr, sync::Arc};
+use stripe::{CapturePaymentIntent, EventObject, EventType, Webhook};
 
 use crate::middleware::auth::Claims;
 
@@ -12,11 +13,24 @@ pub struct PaymentIntentInput {
     payment_method_id: String,
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct CapturePayment {
+    user_id: String,
+    payment_intent_id: String,
+}
+
+#[derive(Clone)]
+pub struct StripeConfig {
+    pub webhook_secret: String,
+}
+
 pub async fn create_payment_intent(
     claims: Claims,
     data: web::Data<Arc<stripe::Client>>,
     input: web::Json<PaymentIntentInput>,
 ) -> impl Responder {
+    println!("Creating payment intent...");
+
     if claims.user_id != input.user_id {
         return HttpResponse::Forbidden().body("Forbidden");
     }
@@ -35,6 +49,8 @@ pub async fn create_payment_intent(
     create_intent.payment_method = Some(
         stripe::PaymentMethodId::from_str(&payment_method_id).expect("Invalid payment method ID"),
     );
+    // Manual, as we capture on the frontend
+    create_intent.capture_method = Some(stripe::PaymentIntentCaptureMethod::Manual);
 
     // Create the payment intent using the injected client
     match stripe::PaymentIntent::create(data.as_ref(), create_intent).await {
@@ -43,6 +59,143 @@ pub async fn create_payment_intent(
             println!("Error creating payment intent: {:?}", e);
             HttpResponse::InternalServerError()
                 .body(format!("Failed to create payment intent: {}", e))
+        }
+    }
+}
+
+pub async fn capture_payment(
+    claims: Claims,
+    data: web::Data<Arc<stripe::Client>>,
+    input: web::Json<CapturePayment>,
+) -> impl Responder {
+    println!("Capturing payment...");
+    if claims.user_id != input.user_id {
+        return HttpResponse::Forbidden().body("Forbidden");
+    }
+
+    let input = input.into_inner();
+    let payment_intent_id = input.payment_intent_id;
+
+    // First retrieve the payment intent to check its status
+    match stripe::PaymentIntent::retrieve(
+        data.as_ref(),
+        &stripe::PaymentIntentId::from_str(&payment_intent_id).expect("Invalid payment intent ID"),
+        &[],
+    )
+    .await
+    {
+        Ok(intent) => {
+            // Check if the payment intent is in a capturable state
+            if intent.status != stripe::PaymentIntentStatus::RequiresCapture {
+                return HttpResponse::BadRequest().body(format!(
+                    "Payment intent is not in a capturable state. Current status: {:?}",
+                    intent.status
+                ));
+            }
+
+            // Proceed with capture since status is correct
+            match stripe::PaymentIntent::capture(
+                data.as_ref(),
+                &payment_intent_id,
+                CapturePaymentIntent::default(),
+            )
+            .await
+            {
+                Ok(captured_intent) => HttpResponse::Ok().json(captured_intent),
+                Err(e) => {
+                    println!("Error capturing payment: {:?}", e);
+                    HttpResponse::InternalServerError()
+                        .body(format!("Failed to capture payment: {}", e))
+                }
+            }
+        }
+        Err(e) => {
+            println!("Error retrieving payment intent: {:?}", e);
+            HttpResponse::InternalServerError()
+                .body(format!("Failed to retrieve payment intent: {}", e))
+        }
+    }
+}
+
+pub async fn handle_stripe_webhook(
+    req: HttpRequest,
+    payload: web::Bytes,
+    stripe_config: web::Data<StripeConfig>,
+) -> impl Responder {
+    // Get the Stripe-Signature header
+    let signature = match req.headers().get("stripe-signature") {
+        Some(sig) => sig.to_str().unwrap_or(""),
+        None => {
+            return HttpResponse::BadRequest().body("Missing stripe-signature header");
+        }
+    };
+
+    // Verify the webhook signature and parse the event
+    let payload_str = match String::from_utf8(payload.to_vec()) {
+        Ok(s) => s,
+        Err(_) => {
+            return HttpResponse::BadRequest().body("Invalid payload encoding");
+        }
+    };
+
+    let event =
+        match Webhook::construct_event(&payload_str, signature, &stripe_config.webhook_secret) {
+            Ok(event) => event,
+            Err(e) => {
+                println!("Webhook error: {:?}", e);
+                return HttpResponse::BadRequest().body(format!("Webhook error: {}", e));
+            }
+        };
+
+    // Check the event type and handle accordingly
+    match event.type_ {
+        EventType::PaymentIntentSucceeded => {
+            if let EventObject::PaymentIntent(payment_intent) = event.data.object {
+                println!("Payment succeeded: {}", payment_intent.id);
+
+                // Extract metadata if available
+                // if let Some(metadata) = payment_intent.metadata {
+                //     if let Some(user_id) = metadata.get("user_id") {
+                //         println!("User ID: {}", user_id);
+                //         // TODO: Update your database to mark booking as paid
+                //         // update_booking_status(&payment_intent.id, "paid", user_id).await;
+                //     }
+                // }
+
+                // Return success
+                HttpResponse::Ok().json(serde_json::json!({ "received": true }))
+            } else {
+                HttpResponse::BadRequest().body("Invalid payment intent object")
+            }
+        }
+
+        EventType::PaymentIntentPaymentFailed => {
+            if let EventObject::PaymentIntent(payment_intent) = event.data.object {
+                println!("Payment failed: {}", payment_intent.id);
+
+                // TODO: Update your database to mark booking as failed
+                // update_booking_status(&payment_intent.id, "failed", user_id).await;
+
+                HttpResponse::Ok().json(serde_json::json!({ "received": true }))
+            } else {
+                HttpResponse::BadRequest().body("Invalid payment intent object")
+            }
+        }
+
+        EventType::ChargeSucceeded => {
+            if let EventObject::Charge(charge) = event.data.object {
+                println!("Charge succeeded: {}", charge.id);
+                // Handle successful charge if needed
+                HttpResponse::Ok().json(serde_json::json!({ "received": true }))
+            } else {
+                HttpResponse::BadRequest().body("Invalid charge object")
+            }
+        }
+
+        // Handle other event types as needed
+        _ => {
+            println!("Unhandled event type: {:?}", event.type_);
+            HttpResponse::Ok().json(serde_json::json!({ "received": true }))
         }
     }
 }
