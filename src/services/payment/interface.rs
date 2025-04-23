@@ -6,6 +6,7 @@ pub enum CustomerError {
     NotFound,
     InternalServerError,
 }
+#[derive(Debug)]
 pub enum PaymentError {
     NotFound,
     InternalServerError,
@@ -20,7 +21,7 @@ pub trait PaymentOperations {
         customer: CustomerData,
     ) -> Result<CustomerData, CustomerError>;
 
-    async fn get_payment_method(&self, payment_id: String) -> Result<PaymentMethod, PaymentError>;
+    // async fn get_payment_method(&self, payment_id: String) -> Result<PaymentMethod, PaymentError>;
     async fn get_cust_payment_methods(
         &self,
         customer_id: String,
@@ -37,4 +38,11 @@ pub trait PaymentOperations {
         customer_id: String,
         payment_id: String,
     ) -> Result<HttpResponse, PaymentError>;
+
+    async fn create_payment_intent(
+        &self,
+        amount: i64,
+        customer_id: &str,
+        payment_method_id: &str,
+    ) -> Result<stripe::PaymentIntent, PaymentError>;
 }

@@ -1,7 +1,7 @@
 use actix_web::HttpResponse;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
-use stripe::{CustomerId, PaymentMethod};
+use stripe::{Currency, CustomerId, PaymentMethod, PaymentMethodId};
 
 use crate::services::payment::interface::{CustomerError, PaymentError, PaymentOperations};
 
@@ -44,15 +44,11 @@ impl PaymentOperations for StripeProvider {
             Err(_) => Err(CustomerError::NotFound),
         }
     }
-
     async fn update_customer(
         &self,
         customer_id: String,
         customer: CustomerData,
     ) -> Result<CustomerData, CustomerError> {
-        todo!()
-    }
-    async fn get_payment_method(&self, payment_id: String) -> Result<PaymentMethod, PaymentError> {
         todo!()
     }
 
@@ -141,23 +137,65 @@ impl PaymentOperations for StripeProvider {
             payment_id
         );
 
-        let params = [("customer", customer_id)];
+        println!(
+            "Detaching payment method: {} from customer: {}",
+            payment_id, customer_id
+        );
+        println!("URL: {}", url);
 
+        // For detach operation in Stripe, we don't need to send the customer_id
+        // The payment method already knows which customer it's attached to
         let res = match client
-            .delete(&url)
+            .post(&url) // Stripe uses POST not DELETE for the detach operation
             .header("Authorization", format!("Bearer {}", api_key))
-            .form(&params)
             .send()
             .await
         {
             Ok(res) => res,
-            Err(_) => return Err(PaymentError::InternalServerError),
+            Err(err) => {
+                eprintln!("Request error: {:?}", err);
+                return Err(PaymentError::InternalServerError);
+            }
         };
 
-        if res.status().is_success() {
+        // Get the response body for better error logging
+        let status = res.status();
+        let body = match res.text().await {
+            Ok(body) => body,
+            Err(err) => {
+                eprintln!("Failed to read response body: {:?}", err);
+                return Err(PaymentError::InternalServerError);
+            }
+        };
+
+        println!("Response status: {}, body: {}", status, body);
+
+        if status.is_success() {
             return Ok(HttpResponse::Ok().body("Payment method deleted"));
         } else {
-            return Ok(HttpResponse::InternalServerError().body("Failed to delete payment method"));
+            eprintln!("Stripe error: {}", body);
+            return Ok(HttpResponse::InternalServerError()
+                .body(format!("Failed to delete payment method: {}", body)));
+        }
+    }
+
+    async fn create_payment_intent(
+        &self,
+        amount: i64,
+        customer_id: &str,
+        payment_method_id: &str,
+    ) -> Result<stripe::PaymentIntent, PaymentError> {
+        let mut intent = stripe::CreatePaymentIntent::new(amount, Currency::USD);
+
+        intent.customer =
+            Some(CustomerId::from_str(customer_id).map_err(|_| PaymentError::NotFound)?);
+        intent.payment_method =
+            Some(PaymentMethodId::from_str(payment_method_id).map_err(|_| PaymentError::NotFound)?);
+        intent.confirm = Some(true);
+
+        match stripe::PaymentIntent::create(&self.client, intent).await {
+            Ok(payment_intent) => Ok(payment_intent),
+            Err(_) => Err(PaymentError::InternalServerError),
         }
     }
 }
