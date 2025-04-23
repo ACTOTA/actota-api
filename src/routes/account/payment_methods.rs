@@ -8,7 +8,7 @@ use crate::{
     middleware::auth::Claims,
     models::account::User,
     services::{
-        payment::interface::{CustomerError, PaymentError, PaymentOperations},
+        payment::interface::{CustomerError, PaymentOperations},
         stripe::{models::customer::CustomerData, provider::StripeProvider},
     },
 };
@@ -176,7 +176,11 @@ pub async fn get_or_create_customer(
     path: web::Path<String>,
     claims: Claims,
 ) -> impl Responder {
+    println!("INSIDE GET CUSTOMER");
+
     let user_id = path.into_inner();
+    println!("UserId: ${:?}", user_id);
+    println!("Claim: ${:?}", claims.user_id);
 
     // Verify user has permission
     if user_id != claims.user_id {

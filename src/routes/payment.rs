@@ -150,19 +150,7 @@ pub async fn handle_stripe_webhook(
     // Check the event type and handle accordingly
     match event.type_ {
         EventType::PaymentIntentSucceeded => {
-            if let EventObject::PaymentIntent(payment_intent) = event.data.object {
-                println!("Payment succeeded: {}", payment_intent.id);
-
-                // Extract metadata if available
-                // if let Some(metadata) = payment_intent.metadata {
-                //     if let Some(user_id) = metadata.get("user_id") {
-                //         println!("User ID: {}", user_id);
-                //         // TODO: Update your database to mark booking as paid
-                //         // update_booking_status(&payment_intent.id, "paid", user_id).await;
-                //     }
-                // }
-
-                // Return success
+            if let EventObject::PaymentIntent(_payment_intent) = event.data.object {
                 HttpResponse::Ok().json(serde_json::json!({ "received": true }))
             } else {
                 HttpResponse::BadRequest().body("Invalid payment intent object")
@@ -173,8 +161,7 @@ pub async fn handle_stripe_webhook(
             if let EventObject::PaymentIntent(payment_intent) = event.data.object {
                 println!("Payment failed: {}", payment_intent.id);
 
-                // TODO: Update your database to mark booking as failed
-                // update_booking_status(&payment_intent.id, "failed", user_id).await;
+                // Update your database to mark booking as failed
 
                 HttpResponse::Ok().json(serde_json::json!({ "received": true }))
             } else {
