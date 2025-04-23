@@ -6,3 +6,4 @@ pub mod health;
 pub mod itinerary;
 pub mod location;
 pub mod lodging;
+pub mod payment;

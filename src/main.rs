@@ -1,8 +1,9 @@
-use std::{env, path::PathBuf};
+use std::{env, path::PathBuf, sync::Arc};
 
 use actix_cors::Cors;
 use actix_web::{middleware::Logger, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use env_logger::Env;
+use routes::payment::{handle_stripe_webhook, StripeConfig};
 
 mod db;
 mod middleware;
@@ -137,6 +138,20 @@ async fn main() -> std::io::Result<()> {
     let client = db::mongo::create_mongo_client(&mongo_uri).await;
     println!("MongoDB connection established successfully");
 
+    // Initialize the Stripe client
+    println!("Initializing Stripe client...");
+    let stripe_secret_key =
+        std::env::var("STRIPE_SECRET_KEY").expect("STRIPE_SECRET_KEY must be set");
+    let stripe_client = Arc::new(stripe::Client::new(stripe_secret_key));
+    let stripe_data = web::Data::new(stripe_client);
+    println!("Stripe client initialized successfully");
+
+    // Initialize the Stripe configuration for webhook
+    let stripe_config = StripeConfig {
+        webhook_secret: std::env::var("STRIPE_WEBHOOK_SECRET")
+            .expect("STRIPE_WEBHOOK_SECRET must be set"),
+    };
+
     // Create and configure the HTTP server (HTTP/1.1 only)
     HttpServer::new(move || {
         App::new()
@@ -174,7 +189,10 @@ async fn main() -> std::io::Result<()> {
                 }),
             )
             // Share MongoDB client with all routes
+            .app_data(stripe_data.clone())
             .app_data(web::Data::new(client.clone()))
+            .app_data(web::Data::new(stripe_config.clone()))
+            .route("/stripe/webhook", web::post().to(handle_stripe_webhook))
             // Add API routes
             .service(
                 web::scope("/api")
@@ -204,6 +222,18 @@ async fn main() -> std::io::Result<()> {
                                 "/session",
                                 web::get().to(routes::account::auth::user_session),
                             )),
+                    )
+                    .service(
+                        web::scope("payment")
+                            .wrap(middleware::auth::AuthMiddleware)
+                            .route(
+                                "/payment-intent",
+                                web::post().to(routes::payment::create_payment_intent),
+                            )
+                            .route(
+                                "/capture-payment",
+                                web::post().to(routes::payment::capture_payment),
+                            ),
                     )
                     .service(
                         // Protected routes
@@ -263,15 +293,19 @@ async fn main() -> std::io::Result<()> {
                                     .to(routes::account::payment_methods::get_or_create_customer),
                             )
                             .route(
-                                "/{id}/attach-payment-method",
-                                web::post()
-                                    .to(routes::account::payment_methods::attach_payment_method),
-                            )
-                            .route(
-                                "/{id}/detach-payment-method",
-                                web::post()
-                                    .to(routes::account::payment_methods::detach_payment_method),
-                            ),
+                                "/{id}/payment-methods/{pm_id}",
+                                web::delete()
+                                    .to(routes::account::payment_methods::remove_payment_method),
+                            ), // .route(
+                               //     "/{id}/attach-payment-method",
+                               //     web::post()
+                               //         .to(routes::account::payment_methods::attach_payment_method),
+                               // )
+                               // .route(
+                               //     "/{id}/detach-payment-method",
+                               //     web::post()
+                               //         .to(routes::account::payment_methods::detach_payment_method),
+                               // ),
                     )
                     .service(
                         web::scope("")
