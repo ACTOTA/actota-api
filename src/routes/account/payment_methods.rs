@@ -179,8 +179,8 @@ pub async fn get_or_create_customer(
     println!("INSIDE GET CUSTOMER");
 
     let user_id = path.into_inner();
-    println!("UserId: ${:?}", user_id);
-    println!("Claim: ${:?}", claims.user_id);
+    println!("UserId: {:?}", user_id);
+    println!("Claim: {:?}", claims.user_id);
 
     // Verify user has permission
     if user_id != claims.user_id {
