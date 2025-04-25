@@ -20,7 +20,7 @@ pub async fn get_transactions(
     path: web::Path<String>,
 ) -> impl Responder {
     let user_id = path.into_inner();
-    println!("UserId: {:?}", user_id);
+    println!("\n\nUserId: {:?}", user_id);
 
     if claims.user_id != user_id {
         return HttpResponse::Forbidden().body("Forbidden");
