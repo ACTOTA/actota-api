@@ -11,6 +11,7 @@ pub struct PaymentIntentInput {
     amount: i64,
     customer_id: String,
     payment_method_id: String,
+    description: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -40,6 +41,7 @@ pub async fn create_payment_intent(
     let amount = input.amount;
     let customer_id = input.customer_id;
     let payment_method_id = input.payment_method_id;
+    let description = input.description;
 
     let mut create_intent = stripe::CreatePaymentIntent::new(amount, stripe::Currency::USD);
 
@@ -51,6 +53,7 @@ pub async fn create_payment_intent(
     );
     // Manual, as we capture on the frontend
     create_intent.capture_method = Some(stripe::PaymentIntentCaptureMethod::Manual);
+    create_intent.description = Some(&description);
 
     // Create the payment intent using the injected client
     match stripe::PaymentIntent::create(data.as_ref(), create_intent).await {
@@ -172,7 +175,7 @@ pub async fn handle_stripe_webhook(
         EventType::ChargeSucceeded => {
             if let EventObject::Charge(charge) = event.data.object {
                 println!("Charge succeeded: {}", charge.id);
-                // Handle successful charge if needed
+
                 HttpResponse::Ok().json(serde_json::json!({ "received": true }))
             } else {
                 HttpResponse::BadRequest().body("Invalid charge object")
