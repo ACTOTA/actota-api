@@ -288,6 +288,10 @@ async fn main() -> std::io::Result<()> {
                                     .to(routes::account::payment_methods::add_payment_method),
                             )
                             .route(
+                                "/{id}/transactions",
+                                web::get().to(routes::account::transactions::get_transactions),
+                            )
+                            .route(
                                 "/{id}/customer",
                                 web::post()
                                     .to(routes::account::payment_methods::get_or_create_customer),
