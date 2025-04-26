@@ -59,18 +59,7 @@ ENV GOOGLE_APPLICATION_CREDENTIALS=/app/config/dummy-credentials.json
 
 # Set the same dummy credentials as SERVICE_ACCOUNT_JSON for double coverage
 # This ensures the cloud_storage crate can find credentials in either location
-ENV SERVICE_ACCOUNT_JSON='{ \
-  "type": "service_account", \
-  "project_id": "dummy-project", \
-  "private_key_id": "dummy", \
-  "private_key": "-----BEGIN PRIVATE KEY-----\ndummy\n-----END PRIVATE KEY-----\n", \
-  "client_email": "dummy@example.com", \
-  "client_id": "dummy", \
-  "auth_uri": "https://accounts.google.com/o/oauth2/auth", \
-  "token_uri": "https://oauth2.googleapis.com/token", \
-  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs", \
-  "client_x509_cert_url": "dummy" \
-}'
+ENV SERVICE_ACCOUNT_JSON="{\"type\":\"service_account\",\"project_id\":\"dummy-project\",\"private_key_id\":\"dummy\",\"private_key\":\"-----BEGIN PRIVATE KEY-----\\ndummy\\n-----END PRIVATE KEY-----\\n\",\"client_email\":\"dummy@example.com\",\"client_id\":\"dummy\",\"auth_uri\":\"https://accounts.google.com/o/oauth2/auth\",\"token_uri\":\"https://oauth2.googleapis.com/token\",\"auth_provider_x509_cert_url\":\"https://www.googleapis.com/oauth2/v1/certs\",\"client_x509_cert_url\":\"dummy\"}"
 
 # Run the application
 CMD ["/usr/local/bin/actota-api"]
