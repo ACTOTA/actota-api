@@ -1,7 +1,7 @@
 use actix_web::HttpResponse;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
-use stripe::{Currency, CustomerId, PaymentMethod, PaymentMethodId};
+use stripe::{Currency, CustomerId, PaymentMethod, PaymentMethodId, PaymentIntentId, CreateRefund};
 
 use crate::services::payment::interface::{CustomerError, PaymentError, PaymentOperations};
 
@@ -196,6 +196,30 @@ impl PaymentOperations for StripeProvider {
         match stripe::PaymentIntent::create(&self.client, intent).await {
             Ok(payment_intent) => Ok(payment_intent),
             Err(_) => Err(PaymentError::InternalServerError),
+        }
+    }
+
+    async fn create_refund(
+        &self,
+        payment_intent_id: &str,
+        amount: Option<i64>,
+    ) -> Result<stripe::Refund, PaymentError> {
+        let payment_intent_id = PaymentIntentId::from_str(payment_intent_id)
+            .map_err(|_| PaymentError::NotFound)?;
+        
+        let mut create_refund = CreateRefund::new();
+        create_refund.payment_intent = Some(payment_intent_id);
+
+        if let Some(refund_amount) = amount {
+            create_refund.amount = Some(refund_amount);
+        }
+
+        match stripe::Refund::create(&self.client, create_refund).await {
+            Ok(refund) => Ok(refund),
+            Err(e) => {
+                eprintln!("Stripe refund error: {:?}", e);
+                Err(PaymentError::RefundError)
+            }
         }
     }
 }

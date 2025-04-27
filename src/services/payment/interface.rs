@@ -1,6 +1,6 @@
 use crate::services::stripe::models::customer::CustomerData;
 use actix_web::HttpResponse;
-use stripe::PaymentMethod;
+use stripe::{PaymentMethod, Refund};
 
 pub enum CustomerError {
     NotFound,
@@ -10,6 +10,7 @@ pub enum CustomerError {
 pub enum PaymentError {
     NotFound,
     InternalServerError,
+    RefundError,
 }
 
 pub trait PaymentOperations {
@@ -45,4 +46,10 @@ pub trait PaymentOperations {
         customer_id: &str,
         payment_method_id: &str,
     ) -> Result<stripe::PaymentIntent, PaymentError>;
+    
+    async fn create_refund(
+        &self,
+        payment_intent_id: &str,
+        amount: Option<i64>,
+    ) -> Result<Refund, PaymentError>;
 }

@@ -1,14 +1,29 @@
 use crate::{
     middleware::auth::Claims,
-    models::{bookings::Booking, itinerary::FeaturedVacation},
-    services::itinerary_service::get_images,
+    models::{
+        bookings::{Booking, BookingStatus},
+        itinerary::FeaturedVacation,
+        refund_policy::RefundPolicy,
+    },
+    services::{itinerary_service::get_images, payment::interface::PaymentOperations},
 };
 use actix_web::{web, HttpResponse, Responder};
 use bson::{doc, oid::ObjectId};
+use chrono::Utc;
 use futures::TryStreamExt;
 use mongodb::Client;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CancelResponse {
+    pub success: bool,
+    pub message: String,
+    pub refund_amount: Option<i64>,
+    pub refund_id: Option<String>,
+}
+
+// Create a booking
 pub async fn add_booking(
     data: web::Data<Arc<Client>>,
     path: web::Path<(String, String)>,
@@ -57,6 +72,7 @@ pub async fn add_booking(
                 user_id: ObjectId::parse_str(&claims.user_id).unwrap(),
                 itinerary_id: ObjectId::parse_str(&itinerary_id).unwrap(),
                 status: "ongoing".to_string(),
+                start_datetime: None,
                 created_at: Some(time),
                 updated_at: Some(time),
             };
@@ -153,14 +169,12 @@ pub async fn get_all_bookings(
     let filter = doc! {
         "user_id": ObjectId::parse_str(&claims.user_id).unwrap()
     };
-    
+
     match collection.find(filter).await {
         Ok(cursor) => {
             let results = cursor.try_collect::<Vec<Booking>>().await;
             match results {
-                Ok(bookings) => {
-                    return HttpResponse::Ok().json(bookings)
-                }
+                Ok(bookings) => return HttpResponse::Ok().json(bookings),
                 Err(err) => {
                     eprintln!("Error retrieving booking: {:?}", err);
                     HttpResponse::InternalServerError().body("Failed to retrieve booking")
@@ -174,78 +188,148 @@ pub async fn get_all_bookings(
     }
 }
 
-// pub async fn get_bookings(
-//     data: web::Data<Arc<Client>>,
-//     claims: Claims,
-//     path: web::Path<(String,)>,
-// ) -> impl Responder {
-//     if path.into_inner().0 != claims.user_id {
-//         return HttpResponse::Forbidden().body("Forbidden");
-//     }
+pub async fn cancel_booking(
+    mongo_client: web::Data<Arc<Client>>,
+    payment_provider: web::Data<Arc<dyn PaymentOperations + 'static>>,
+    path: web::Path<(String, String)>,
+    claims: Claims,
+) -> impl Responder {
+    let (user_id, booking_id) = path.into_inner();
 
-//     let client = data.into_inner();
-//     let collection: mongodb::Collection<Booking> =
-//         client.database("Account").collection("Bookings");
+    // Authorization check
+    if user_id != claims.user_id {
+        return HttpResponse::Forbidden().json(CancelResponse {
+            success: false,
+            message: "Unauthorized access".to_string(),
+            refund_amount: None,
+            refund_id: None,
+        });
+    }
 
-//     let filter = doc! {
-//         "user_id": ObjectId::parse_str(&claims.user_id).unwrap(),
-//     };
+    let client = mongo_client.into_inner();
+    let bookings_collection: mongodb::Collection<Booking> =
+        client.database("Account").collection("Bookings");
 
-//     match collection.find(filter).await {
-//         Ok(cursor) => {
-//             let results = cursor.try_collect::<Vec<Booking>>().await;
-//             match results {
-//                 Ok(bookings) => {
-//                     // Extract itinerary IDs from bookings
-//                     let itinerary_ids: Vec<ObjectId> = bookings
-//                         .iter()
-//                         .map(|booking| booking.itinerary_id.clone())
-//                         .collect();
+    let booking_object_id = match ObjectId::parse_str(&booking_id) {
+        Ok(id) => id,
+        Err(_) => {
+            return HttpResponse::BadRequest().json(CancelResponse {
+                success: false,
+                message: "Invalid booking ID format".to_string(),
+                refund_amount: None,
+                refund_id: None,
+            });
+        }
+    };
 
-//                     // Fetch itineraries from Itineraries.Featured collection
-//                     let itineraries_collection: mongodb::Collection<FeaturedVacation> =
-//                         client.database("Itineraries").collection("Featured");
+    // Get booking details
+    let filter = doc! { "_id": booking_object_id };
+    let booking = match bookings_collection.find_one(filter.clone()).await {
+        Ok(Some(booking)) => booking,
+        Ok(None) => {
+            return HttpResponse::NotFound().json(CancelResponse {
+                success: false,
+                message: "Booking not found".to_string(),
+                refund_amount: None,
+                refund_id: None,
+            });
+        }
+        Err(_) => {
+            return HttpResponse::InternalServerError().json(CancelResponse {
+                success: false,
+                message: "Error retrieving booking".to_string(),
+                refund_amount: None,
+                refund_id: None,
+            });
+        }
+    };
 
-//                     let itinerary_filter = doc! {
-//                         "_id": { "$in": itinerary_ids }
-//                     };
+    // Check if booking is already cancelled or refunded
+    if booking.status == BookingStatus::Cancelled.to_string()
+        || booking.status == BookingStatus::Refunded.to_string()
+    {
+        return HttpResponse::BadRequest().json(CancelResponse {
+            success: false,
+            message: "Booking is already cancelled or refunded".to_string(),
+            refund_amount: None,
+            refund_id: None,
+        });
+    }
 
-//                     match itineraries_collection.find(itinerary_filter).await {
-//                         Ok(itinerary_cursor) => {
-//                             match itinerary_cursor
-//                                 .try_collect::<Vec<FeaturedVacation>>()
-//                                 .await
-//                             {
-//                                 Ok(mut featured_itineraries) => {
-//                                     // Fetch images for each itinerary
-//                                     featured_itineraries = get_images(featured_itineraries).await;
+    // Apply refund policy if payment exists
+    let mut refund_id = None;
+    let mut refund_amount = None;
 
-//                                     HttpResponse::Ok().json(featured_itineraries)
-//                                 }
-//                                 Err(err) => {
-//                                     eprintln!("Error fetching itineraries: {:?}", err);
-//                                     HttpResponse::InternalServerError()
-//                                         .body("Failed to retrieve itineraries")
-//                                 }
-//                             }
-//                         }
-//                         Err(err) => {
-//                             eprintln!("Error fetching itineraries: {:?}", err);
-//                             HttpResponse::InternalServerError()
-//                                 .body("Failed to retrieve itineraries")
-//                         }
-//                     }
-//                 }
-//                 Err(err) => {
-//                     eprintln!("Error retrieving bookings: {:?}", err);
-//                     HttpResponse::InternalServerError().body("Failed to retrieve bookings")
-//                 }
-//             }
-//         }
-//         Err(err) => {
-//             eprintln!("Error fetching bookings: {:?}", err);
-//             HttpResponse::InternalServerError().body("Failed to fetch bookings")
-//         }
-//     }
-// }
+    if let (Some(payment_intent_id), Some(payment_amount)) =
+        (&booking.payment_intent_id, booking.payment_amount)
+    {
+        // Apply refund policy
+        let refund_policy = RefundPolicy::default();
+        let created_at = booking.created_at.unwrap_or_else(Utc::now);
+        let calculated_refund_amount =
+            refund_policy.calculate_refund_amount(payment_amount, created_at);
 
+        if calculated_refund_amount > 0 {
+            // Process refund through payment provider
+            match payment_provider
+                .create_refund(payment_intent_id, Some(calculated_refund_amount))
+                .await
+            {
+                Ok(refund) => {
+                    refund_id = Some(refund.id.to_string());
+                    refund_amount = Some(calculated_refund_amount);
+                }
+                Err(e) => {
+                    eprintln!("Refund error: {:?}", e);
+                    return HttpResponse::InternalServerError().json(CancelResponse {
+                        success: false,
+                        message: "Failed to process refund".to_string(),
+                        refund_amount: None,
+                        refund_id: None,
+                    });
+                }
+            }
+        }
+    }
+
+    // Update booking status
+    let new_status = if refund_id.is_some() {
+        BookingStatus::Refunded.to_string()
+    } else {
+        BookingStatus::Cancelled.to_string()
+    };
+
+    let update = doc! {
+        "$set": {
+            "status": new_status,
+            "updated_at": Utc::now(),
+            "refund_id": refund_id.clone()
+        }
+    };
+
+    match bookings_collection.update_one(filter, update).await {
+        Ok(_) => {
+            let message = if refund_amount.is_some() {
+                format!(
+                    "Booking cancelled with refund of ${:.2}",
+                    refund_amount.unwrap() as f64 / 100.0
+                )
+            } else {
+                "Booking cancelled without refund".to_string()
+            };
+
+            HttpResponse::Ok().json(CancelResponse {
+                success: true,
+                message,
+                refund_amount,
+                refund_id,
+            })
+        }
+        Err(_) => HttpResponse::InternalServerError().json(CancelResponse {
+            success: false,
+            message: "Failed to update booking status".to_string(),
+            refund_amount: None,
+            refund_id: None,
+        }),
+    }
+}

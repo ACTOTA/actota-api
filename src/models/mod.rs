@@ -8,3 +8,4 @@ pub mod location;
 pub mod search;
 pub mod user;
 pub mod bookings;
+pub mod refund_policy;

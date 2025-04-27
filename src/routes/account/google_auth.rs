@@ -82,7 +82,14 @@ pub async fn google_auth_callback(
                 Ok(token) => {
                     let frontend_url = std::env::var("FRONTEND_URL")
                         .unwrap_or("http://localhost:3000".to_string());
-                    let redirect_url = format!("{}/?token={}", frontend_url, token);
+                    
+                    // Include customer_id in the redirect URL if available
+                    let customer_id_param = match &existing_user.customer_id {
+                        Some(customer_id) => format!("&customer_id={}", customer_id),
+                        None => String::new(),
+                    };
+                    
+                    let redirect_url = format!("{}/?token={}{}", frontend_url, token, customer_id_param);
 
                     HttpResponse::Found()
                         .insert_header((header::LOCATION, redirect_url))
@@ -93,7 +100,7 @@ pub async fn google_auth_callback(
         }
         Ok(None) => {
             // User doesn't exist, create a new account
-            let mut new_user = User {
+            let new_user = User {
                 id: None,
                 email: user_info.email,
                 // We don't set a password for users who sign in with Google
@@ -119,7 +126,16 @@ pub async fn google_auth_callback(
                     match generate_token(&new_user.email, user_id) {
                         Ok(token) => {
                             // Redirect to frontend with token
-                            let redirect_url = format!("/?token={}", token);
+                            let frontend_url = std::env::var("FRONTEND_URL")
+                                .unwrap_or("http://localhost:3000".to_string());
+                            
+                            // Include customer_id in the redirect URL if available (will be None for new users)
+                            let customer_id_param = match &new_user.customer_id {
+                                Some(customer_id) => format!("&customer_id={}", customer_id),
+                                None => String::new(),
+                            };
+                            
+                            let redirect_url = format!("{}/?token={}{}", frontend_url, token, customer_id_param);
                             HttpResponse::Found()
                                 .insert_header((header::LOCATION, redirect_url))
                                 .finish()

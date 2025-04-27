@@ -142,8 +142,13 @@ async fn main() -> std::io::Result<()> {
     println!("Initializing Stripe client...");
     let stripe_secret_key =
         std::env::var("STRIPE_SECRET_KEY").expect("STRIPE_SECRET_KEY must be set");
-    let stripe_client = Arc::new(stripe::Client::new(stripe_secret_key));
+    let stripe_client = Arc::new(stripe::Client::new(stripe_secret_key.clone()));
     let stripe_data = web::Data::new(stripe_client);
+    
+    // Initialize StripeProvider for payment operations
+    let stripe_provider = Arc::new(services::stripe::provider::StripeProvider::new(stripe_secret_key));
+    let stripe_provider_data = web::Data::new(stripe_provider as Arc<dyn services::payment::interface::PaymentOperations + 'static>);
+    
     println!("Stripe client initialized successfully");
 
     // Initialize the Stripe configuration for webhook
@@ -188,10 +193,11 @@ async fn main() -> std::io::Result<()> {
                         .body("ACTOTA API is running")
                 }),
             )
-            // Share MongoDB client with all routes
+            // Share MongoDB client and payment providers with all routes
             .app_data(stripe_data.clone())
             .app_data(web::Data::new(client.clone()))
             .app_data(web::Data::new(stripe_config.clone()))
+            .app_data(stripe_provider_data.clone())
             .route("/stripe/webhook", web::post().to(handle_stripe_webhook))
             // Add API routes
             .service(
@@ -278,6 +284,10 @@ async fn main() -> std::io::Result<()> {
                                 web::delete().to(routes::account::bookings::remove_booking),
                             )
                             .route(
+                                "/{id}/bookings/{booking_id}/cancel",
+                                web::post().to(routes::account::bookings::cancel_booking),
+                            )
+                            .route(
                                 "/{id}/payment-methods",
                                 web::get()
                                     .to(routes::account::payment_methods::get_payment_methods),
@@ -300,16 +310,7 @@ async fn main() -> std::io::Result<()> {
                                 "/{id}/payment-methods/{pm_id}",
                                 web::delete()
                                     .to(routes::account::payment_methods::remove_payment_method),
-                            ), // .route(
-                               //     "/{id}/attach-payment-method",
-                               //     web::post()
-                               //         .to(routes::account::payment_methods::attach_payment_method),
-                               // )
-                               // .route(
-                               //     "/{id}/detach-payment-method",
-                               //     web::post()
-                               //         .to(routes::account::payment_methods::detach_payment_method),
-                               // ),
+                            ),
                     )
                     .service(
                         web::scope("")
