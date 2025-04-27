@@ -18,6 +18,7 @@ env:
   JWT_SECRET: ${{secrets.JWT_SECRET}}
   MONGODB_URI: ${{secrets.MONGODB_URI}}
   STRIPE_SECRET_KEY: ${{secrets.STRIPE_SECRET_KEY}}
+  STRIPE_WEBHOOK_SECRET: ${{secrets.STRIPE_WEBHOOK_SECRET}}
   CLOUD_STORAGE_URL: ${{vars.CLOUD_STORAGE_URL}}
   FACEBOOK_REDIRECT_URI: ${{vars.FACEBOOK_REDIRECT_URI}}
   GOOGLE_REDIRECT_URI: ${{vars.GOOGLE_REDIRECT_URI}}
@@ -48,6 +49,7 @@ jobs:
             --build-arg JWT_SECRET="${{ env.JWT_SECRET }}" \
             --build-arg MONGODB_URI="${{ env.MONGODB_URI }}" \
             --build-arg STRIPE_SECRET="${{ env.STRIPE_SECRET_KEY }}" \
+            --build-arg STRIPE_WEBHOOK_SECRET="${{ env.STRIPE_WEBHOOK_SECRET }}" \
             --build-arg CLOUD_STORAGE_URL="${{ env.CLOUD_STORAGE_URL }}" \
             --build-arg FACEBOOK_REDIRECT_URI="${{ env.FACEBOOK_REDIRECT_URI }}" \
             --build-arg GOOGLE_REDIRECT_URI="${{ env.GOOGLE_REDIRECT_URI }}" \
@@ -90,6 +92,7 @@ jobs:
             --build-arg JWT_SECRET="${{ env.JWT_SECRET }}" \
             --build-arg MONGODB_URI="${{ env.MONGODB_URI }}" \
             --build-arg STRIPE_SECRET="${{ env.STRIPE_SECRET_KEY }}" \
+            --build-arg STRIPE_WEBHOOK_SECRET="${{ env.STRIPE_WEBHOOK_SECRET }}" \
             --build-arg CLOUD_STORAGE_URL="${{ env.CLOUD_STORAGE_URL }}" \
             --build-arg FACEBOOK_REDIRECT_URI="${{ env.FACEBOOK_REDIRECT_URI }}" \
             --build-arg GOOGLE_REDIRECT_URI="${{ env.GOOGLE_REDIRECT_URI }}" \
