@@ -87,15 +87,10 @@ fn setup_credentials() {
         println!("Using SERVICE_ACCOUNT_JSON from environment variable");
         return;
     }
-
-    // For ADC to work in the cloud_storage crate:
-    // 1. Set an empty SERVICE_ACCOUNT_JSON to prevent file lookups
-    // 2. Set GOOGLE_APPLICATION_CREDENTIALS to a special value
     println!("No explicit SERVICE_ACCOUNT_JSON found. Configuring for ADC...");
-    env::set_var("SERVICE_ACCOUNT_JSON", "{}");
 
-    // Only set GOOGLE_APPLICATION_CREDENTIALS if it's not already set
-    // This preserves any ADC configuration already in place
+    env::set_var("SERVICE_ACCOUNT_JSON", "{\"_\":\"_\"}");
+
     if env::var("GOOGLE_APPLICATION_CREDENTIALS").is_err() {
         println!("Setting GOOGLE_APPLICATION_CREDENTIALS to 'use-adc'");
         env::set_var("GOOGLE_APPLICATION_CREDENTIALS", "use-adc");
