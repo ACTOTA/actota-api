@@ -60,6 +60,13 @@ jobs:
           RUST_ENV: "${{ env.RUST_ENV }}"
           RUST_LOG: "${{ env.RUST_LOG }}"
           SERVICE_ACCOUNT_JSON: "{\"_\":\"_\"}"
+          # Include secrets as regular env vars temporarily
+          FACEBOOK_CLIENT_SECRET: "${{ env.FACEBOOK_CLIENT_SECRET }}"
+          GOOGLE_CLIENT_SECRET: "${{ env.GOOGLE_CLIENT_SECRET }}"
+          JWT_SECRET: "${{ env.JWT_SECRET }}"
+          MONGODB_URI: "${{ env.MONGODB_URI }}"
+          STRIPE_SECRET_KEY: "${{ env.STRIPE_SECRET_KEY }}"
+          STRIPE_WEBHOOK_SECRET: "${{ env.STRIPE_WEBHOOK_SECRET }}"
           EOF
       - name: Clear existing env vars
         run: |
@@ -74,7 +81,6 @@ jobs:
             --platform managed \
             --service-account=actota-api@${PROJECT_ID}.iam.gserviceaccount.com \
             --env-vars-file=env.yaml \
-            --set-secrets=FACEBOOK_CLIENT_SECRET=facebook-client-secret:latest,GOOGLE_CLIENT_SECRET=google-client-secret:latest,JWT_SECRET=jwt-secret:latest,MONGODB_URI=mongodb-uri:latest,STRIPE_SECRET_KEY=stripe-secret-key:latest,STRIPE_WEBHOOK_SECRET=stripe-webhook-secret:latest \
             --allow-unauthenticated
 
   deploy-prod:
@@ -110,6 +116,13 @@ jobs:
           RUST_ENV: "${{ env.RUST_ENV }}"
           RUST_LOG: "${{ env.RUST_LOG }}"
           SERVICE_ACCOUNT_JSON: "{\"_\":\"_\"}"
+          # Include secrets as regular env vars temporarily
+          FACEBOOK_CLIENT_SECRET: "${{ env.FACEBOOK_CLIENT_SECRET }}"
+          GOOGLE_CLIENT_SECRET: "${{ env.GOOGLE_CLIENT_SECRET }}"
+          JWT_SECRET: "${{ env.JWT_SECRET }}"
+          MONGODB_URI: "${{ env.MONGODB_URI }}"
+          STRIPE_SECRET_KEY: "${{ env.STRIPE_SECRET_KEY }}"
+          STRIPE_WEBHOOK_SECRET: "${{ env.STRIPE_WEBHOOK_SECRET }}"
           EOF
       - name: Clear existing env vars
         run: |
@@ -124,5 +137,4 @@ jobs:
             --platform managed \
             --service-account=actota-api@${PROJECT_ID}.iam.gserviceaccount.com \
             --env-vars-file=env.yaml \
-            --set-secrets=FACEBOOK_CLIENT_SECRET=facebook-client-secret:latest,GOOGLE_CLIENT_SECRET=google-client-secret:latest,JWT_SECRET=jwt-secret:latest,MONGODB_URI=mongodb-uri:latest,STRIPE_SECRET_KEY=stripe-secret-key:latest,STRIPE_WEBHOOK_SECRET=stripe-webhook-secret:latest \
             --allow-unauthenticated
