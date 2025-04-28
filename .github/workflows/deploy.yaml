@@ -12,7 +12,6 @@ env:
   RUST_ENV: ${{vars.RUST_ENV}}
   FACEBOOK_CLIENT_ID: ${{secrets.FACEBOOK_CLIENT_ID}}
   FACEBOOK_CLIENT_SECRET: ${{secrets.FACEBOOK_CLIENT_SECRET}}
-  # GOOGLE_APPLICATION_CREDENTIALS: ${{secrets.GOOGLE_APPLICATION_CREDENTIALS}}
   GOOGLE_CLIENT_ID: ${{secrets.GOOGLE_CLIENT_ID}}
   GOOGLE_CLIENT_SECRET: ${{secrets.GOOGLE_CLIENT_SECRET}}
   JWT_SECRET: ${{secrets.JWT_SECRET}}
@@ -37,7 +36,7 @@ jobs:
         uses: 'google-github-actions/auth@v1'
         with:
           credentials_json: '${{ secrets.GCP_SA_KEY }}'
-      # Build the Docker image, passing build arguments with proper GitHub expression syntax
+      # Build the Docker image, passing only build-time arguments
       - name: Build
         run: |
           docker build \
@@ -48,6 +47,39 @@ jobs:
         run: gcloud auth configure-docker --quiet
       - name: Push
         run: docker push gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:$GITHUB_SHA
+      # Create or update secrets in Secret Manager
+      - name: Create/Update Secrets
+        run: |
+          # Create Secret Manager secrets if they don't exist
+          echo -n "${{ env.FACEBOOK_CLIENT_SECRET }}" | \
+            gcloud secrets create facebook-client-secret --data-file=- --replication-policy="automatic" || \
+            echo -n "${{ env.FACEBOOK_CLIENT_SECRET }}" | \
+            gcloud secrets versions add facebook-client-secret --data-file=-
+
+          echo -n "${{ env.GOOGLE_CLIENT_SECRET }}" | \
+            gcloud secrets create google-client-secret --data-file=- --replication-policy="automatic" || \
+            echo -n "${{ env.GOOGLE_CLIENT_SECRET }}" | \
+            gcloud secrets versions add google-client-secret --data-file=-
+
+          echo -n "${{ env.JWT_SECRET }}" | \
+            gcloud secrets create jwt-secret --data-file=- --replication-policy="automatic" || \
+            echo -n "${{ env.JWT_SECRET }}" | \
+            gcloud secrets versions add jwt-secret --data-file=-
+
+          echo -n "${{ env.MONGODB_URI }}" | \
+            gcloud secrets create mongodb-uri --data-file=- --replication-policy="automatic" || \
+            echo -n "${{ env.MONGODB_URI }}" | \
+            gcloud secrets versions add mongodb-uri --data-file=-
+
+          echo -n "${{ env.STRIPE_SECRET_KEY }}" | \
+            gcloud secrets create stripe-secret-key --data-file=- --replication-policy="automatic" || \
+            echo -n "${{ env.STRIPE_SECRET_KEY }}" | \
+            gcloud secrets versions add stripe-secret-key --data-file=-
+
+          echo -n "${{ env.STRIPE_WEBHOOK_SECRET }}" | \
+            gcloud secrets create stripe-webhook-secret --data-file=- --replication-policy="automatic" || \
+            echo -n "${{ env.STRIPE_WEBHOOK_SECRET }}" | \
+            gcloud secrets versions add stripe-webhook-secret --data-file=-
       - name: Deploy
         run: |
           gcloud run deploy ${{ env.SERVICE_NAME }} \
@@ -56,76 +88,89 @@ jobs:
             --platform managed \
             --service-account=actota-api@${PROJECT_ID}.iam.gserviceaccount.com \
             --set-env-vars=FACEBOOK_CLIENT_ID="${{ env.FACEBOOK_CLIENT_ID }}" \
-            --set-env-vars=FACEBOOK_CLIENT_SECRET="${{ env.FACEBOOK_CLIENT_SECRET }}" \
             --set-env-vars=GOOGLE_CLIENT_ID="${{ env.GOOGLE_CLIENT_ID }}" \
-            --set-env-vars=GOOGLE_CLIENT_SECRET="${{ env.GOOGLE_CLIENT_SECRET }}" \
-            --set-env-vars=JWT_SECRET="${{ env.JWT_SECRET }}" \
-            --set-env-vars=MONGODB_URI="${{ env.MONGODB_URI }}" \
-            --set-env-vars=STRIPE_SECRET="${{ env.STRIPE_SECRET_KEY }}" \
-            --set-env-vars=STRIPE_WEBHOOK_SECRET="${{ env.STRIPE_WEBHOOK_SECRET }}" \
             --set-env-vars=CLOUD_STORAGE_URL="${{ env.CLOUD_STORAGE_URL }}" \
             --set-env-vars=FACEBOOK_REDIRECT_URI="${{ env.FACEBOOK_REDIRECT_URI }}" \
             --set-env-vars=GOOGLE_REDIRECT_URI="${{ env.GOOGLE_REDIRECT_URI }}" \
             --set-env-vars=FRONTEND_URL="${{ env.FRONTEND_URL }}" \
             --set-env-vars=ITINERARY_BUCKET="${{ env.ITINERARY_BUCKET }}" \
             --set-env-vars=PROFILE_PIC_BUCKET="${{ env.PROFILE_PIC_BUCKET }}" \
-            --set-env-vars="SERVICE_ACCOUNT_JSON={}" \
-            --allow-unauthenticated \
+            --set-env-vars=RUST_ENV="${{ env.RUST_ENV }}" \
+            --set-env-vars=RUST_LOG="${{ env.RUST_LOG }}" \
+            --set-env-vars=SERVICE_ACCOUNT_JSON="{\"_\":\"_\"}" \
+            --set-secrets=FACEBOOK_CLIENT_SECRET=facebook-client-secret:latest,GOOGLE_CLIENT_SECRET=google-client-secret:latest,JWT_SECRET=jwt-secret:latest,MONGODB_URI=mongodb-uri:latest,STRIPE_SECRET_KEY=stripe-secret-key:latest,STRIPE_WEBHOOK_SECRET=stripe-webhook-secret:latest \
+            --allow-unauthenticated
+
   deploy-prod:
-      if: github.ref == 'refs/heads/main'
-      runs-on: ubuntu-latest
-      environment: production
-      steps:
-        - uses: actions/checkout@v3
-        - id: 'auth'
-          uses: 'google-github-actions/auth@v1'
-          with:
-            credentials_json: '${{ secrets.GCP_SA_KEY }}'
-        - name: Build
-          run: |
-            docker build \
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v3
+      - id: 'auth'
+        uses: 'google-github-actions/auth@v1'
+        with:
+          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+      - name: Build
+        run: |
+          docker build \
             --build-arg RUST_ENV="${{ env.RUST_ENV }}" \
-            --build-arg FACEBOOK_CLIENT_ID="${{ env.FACEBOOK_CLIENT_ID }}" \
-            --build-arg FACEBOOK_CLIENT_SECRET="${{ env.FACEBOOK_CLIENT_SECRET }}" \
-            --build-arg GOOGLE_CLIENT_ID="${{ env.GOOGLE_CLIENT_ID }}" \
-            --build-arg GOOGLE_CLIENT_SECRET="${{ env.GOOGLE_CLIENT_SECRET }}" \
-            --build-arg JWT_SECRET="${{ env.JWT_SECRET }}" \
-            --build-arg MONGODB_URI="${{ env.MONGODB_URI }}" \
-            --build-arg STRIPE_SECRET="${{ env.STRIPE_SECRET_KEY }}" \
-            --build-arg STRIPE_WEBHOOK_SECRET="${{ env.STRIPE_WEBHOOK_SECRET }}" \
-            --build-arg CLOUD_STORAGE_URL="${{ env.CLOUD_STORAGE_URL }}" \
-            --build-arg FACEBOOK_REDIRECT_URI="${{ env.FACEBOOK_REDIRECT_URI }}" \
-            --build-arg GOOGLE_REDIRECT_URI="${{ env.GOOGLE_REDIRECT_URI }}" \
-            --build-arg FRONTEND_URL="${{ env.FRONTEND_URL }}" \
-            --build-arg ITINERARY_BUCKET="${{ env.ITINERARY_BUCKET }}" \
-            --build-arg PROFILE_PIC_BUCKET="${{ env.PROFILE_PIC_BUCKET }}" \
             --build-arg RUST_LOG="${{ env.RUST_LOG }}" \
             -t gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:$GITHUB_SHA .
-        - name: Configure Docker
-          run: gcloud auth configure-docker --quiet
-        - name: Push
-          run: docker push gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:$GITHUB_SHA
-        - name: Deploy
-          run: |
-            gcloud run deploy ${{ env.SERVICE_NAME }} \
-              --image gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:$GITHUB_SHA \
-              --region ${{ env.REGION }} \
-              --platform managed \
-              --service-account=actota-api@${PROJECT_ID}.iam.gserviceaccount.com \
-              --set-env-vars=FACEBOOK_CLIENT_ID="${{ env.FACEBOOK_CLIENT_ID }}" \
-              --set-env-vars=FACEBOOK_CLIENT_SECRET="${{ env.FACEBOOK_CLIENT_SECRET }}" \
-              --set-env-vars=GOOGLE_CLIENT_ID="${{ env.GOOGLE_CLIENT_ID }}" \
-              --set-env-vars=GOOGLE_CLIENT_SECRET="${{ env.GOOGLE_CLIENT_SECRET }}" \
-              --set-env-vars=JWT_SECRET="${{ env.JWT_SECRET }}" \
-              --set-env-vars=MONGODB_URI="${{ env.MONGODB_URI }}" \
-              --set-env-vars=STRIPE_SECRET="${{ env.STRIPE_SECRET_KEY }}" \
-              --set-env-vars=STRIPE_WEBHOOK_SECRET="${{ env.STRIPE_WEBHOOK_SECRET }}" \
-              --set-env-vars=CLOUD_STORAGE_URL="${{ env.CLOUD_STORAGE_URL }}" \
-              --set-env-vars=FACEBOOK_REDIRECT_URI="${{ env.FACEBOOK_REDIRECT_URI }}" \
-              --set-env-vars=GOOGLE_REDIRECT_URI="${{ env.GOOGLE_REDIRECT_URI }}" \
-              --set-env-vars=FRONTEND_URL="${{ env.FRONTEND_URL }}" \
-              --set-env-vars=ITINERARY_BUCKET="${{ env.ITINERARY_BUCKET }}" \
-              --set-env-vars=PROFILE_PIC_BUCKET="${{ env.PROFILE_PIC_BUCKET }}" \
-              --set-env-vars="SERVICE_ACCOUNT_JSON={}" \
-              --allow-unauthenticated \
-  
+      - name: Configure Docker
+        run: gcloud auth configure-docker --quiet
+      - name: Push
+        run: docker push gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:$GITHUB_SHA
+      # Create or update secrets in Secret Manager
+      - name: Create/Update Secrets
+        run: |
+          # Create Secret Manager secrets if they don't exist
+          echo -n "${{ env.FACEBOOK_CLIENT_SECRET }}" | \
+            gcloud secrets create facebook-client-secret --data-file=- --replication-policy="automatic" || \
+            echo -n "${{ env.FACEBOOK_CLIENT_SECRET }}" | \
+            gcloud secrets versions add facebook-client-secret --data-file=-
+
+          echo -n "${{ env.GOOGLE_CLIENT_SECRET }}" | \
+            gcloud secrets create google-client-secret --data-file=- --replication-policy="automatic" || \
+            echo -n "${{ env.GOOGLE_CLIENT_SECRET }}" | \
+            gcloud secrets versions add google-client-secret --data-file=-
+
+          echo -n "${{ env.JWT_SECRET }}" | \
+            gcloud secrets create jwt-secret --data-file=- --replication-policy="automatic" || \
+            echo -n "${{ env.JWT_SECRET }}" | \
+            gcloud secrets versions add jwt-secret --data-file=-
+
+          echo -n "${{ env.MONGODB_URI }}" | \
+            gcloud secrets create mongodb-uri --data-file=- --replication-policy="automatic" || \
+            echo -n "${{ env.MONGODB_URI }}" | \
+            gcloud secrets versions add mongodb-uri --data-file=-
+
+          echo -n "${{ env.STRIPE_SECRET_KEY }}" | \
+            gcloud secrets create stripe-secret-key --data-file=- --replication-policy="automatic" || \
+            echo -n "${{ env.STRIPE_SECRET_KEY }}" | \
+            gcloud secrets versions add stripe-secret-key --data-file=-
+
+          echo -n "${{ env.STRIPE_WEBHOOK_SECRET }}" | \
+            gcloud secrets create stripe-webhook-secret --data-file=- --replication-policy="automatic" || \
+            echo -n "${{ env.STRIPE_WEBHOOK_SECRET }}" | \
+            gcloud secrets versions add stripe-webhook-secret --data-file=-
+      - name: Deploy
+        run: |
+          gcloud run deploy ${{ env.SERVICE_NAME }} \
+            --image gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:$GITHUB_SHA \
+            --region ${{ env.REGION }} \
+            --platform managed \
+            --service-account=actota-api@${PROJECT_ID}.iam.gserviceaccount.com \
+            --set-env-vars=FACEBOOK_CLIENT_ID="${{ env.FACEBOOK_CLIENT_ID }}" \
+            --set-env-vars=GOOGLE_CLIENT_ID="${{ env.GOOGLE_CLIENT_ID }}" \
+            --set-env-vars=CLOUD_STORAGE_URL="${{ env.CLOUD_STORAGE_URL }}" \
+            --set-env-vars=FACEBOOK_REDIRECT_URI="${{ env.FACEBOOK_REDIRECT_URI }}" \
+            --set-env-vars=GOOGLE_REDIRECT_URI="${{ env.GOOGLE_REDIRECT_URI }}" \
+            --set-env-vars=FRONTEND_URL="${{ env.FRONTEND_URL }}" \
+            --set-env-vars=ITINERARY_BUCKET="${{ env.ITINERARY_BUCKET }}" \
+            --set-env-vars=PROFILE_PIC_BUCKET="${{ env.PROFILE_PIC_BUCKET }}" \
+            --set-env-vars=RUST_ENV="${{ env.RUST_ENV }}" \
+            --set-env-vars=RUST_LOG="${{ env.RUST_LOG }}" \
+            --set-env-vars=SERVICE_ACCOUNT_JSON="{\"_\":\"_\"}" \
+            --set-secrets=FACEBOOK_CLIENT_SECRET=facebook-client-secret:latest,GOOGLE_CLIENT_SECRET=google-client-secret:latest,JWT_SECRET=jwt-secret:latest,MONGODB_URI=mongodb-uri:latest,STRIPE_SECRET_KEY=stripe-secret-key:latest,STRIPE_WEBHOOK_SECRET=stripe-webhook-secret:latest \
+            --allow-unauthenticated
