@@ -41,45 +41,11 @@ jobs:
         run: |
           docker build \
             --build-arg RUST_ENV="${{ env.RUST_ENV }}" \
-            --build-arg RUST_LOG="${{ env.RUST_LOG }}" \
             -t gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:$GITHUB_SHA .
       - name: Configure Docker
         run: gcloud auth configure-docker --quiet
       - name: Push
         run: docker push gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:$GITHUB_SHA
-      # Create or update secrets in Secret Manager
-      - name: Create/Update Secrets
-        run: |
-          # Create Secret Manager secrets if they don't exist
-          echo -n "${{ env.FACEBOOK_CLIENT_SECRET }}" | \
-            gcloud secrets create facebook-client-secret --data-file=- --replication-policy="automatic" || \
-            echo -n "${{ env.FACEBOOK_CLIENT_SECRET }}" | \
-            gcloud secrets versions add facebook-client-secret --data-file=-
-
-          echo -n "${{ env.GOOGLE_CLIENT_SECRET }}" | \
-            gcloud secrets create google-client-secret --data-file=- --replication-policy="automatic" || \
-            echo -n "${{ env.GOOGLE_CLIENT_SECRET }}" | \
-            gcloud secrets versions add google-client-secret --data-file=-
-
-          echo -n "${{ env.JWT_SECRET }}" | \
-            gcloud secrets create jwt-secret --data-file=- --replication-policy="automatic" || \
-            echo -n "${{ env.JWT_SECRET }}" | \
-            gcloud secrets versions add jwt-secret --data-file=-
-
-          echo -n "${{ env.MONGODB_URI }}" | \
-            gcloud secrets create mongodb-uri --data-file=- --replication-policy="automatic" || \
-            echo -n "${{ env.MONGODB_URI }}" | \
-            gcloud secrets versions add mongodb-uri --data-file=-
-
-          echo -n "${{ env.STRIPE_SECRET_KEY }}" | \
-            gcloud secrets create stripe-secret-key --data-file=- --replication-policy="automatic" || \
-            echo -n "${{ env.STRIPE_SECRET_KEY }}" | \
-            gcloud secrets versions add stripe-secret-key --data-file=-
-
-          echo -n "${{ env.STRIPE_WEBHOOK_SECRET }}" | \
-            gcloud secrets create stripe-webhook-secret --data-file=- --replication-policy="automatic" || \
-            echo -n "${{ env.STRIPE_WEBHOOK_SECRET }}" | \
-            gcloud secrets versions add stripe-webhook-secret --data-file=-
       - name: Deploy
         run: |
           gcloud run deploy ${{ env.SERVICE_NAME }} \
@@ -87,6 +53,7 @@ jobs:
             --region ${{ env.REGION }} \
             --platform managed \
             --service-account=actota-api@${PROJECT_ID}.iam.gserviceaccount.com \
+            --clear-env-vars \
             --set-env-vars=FACEBOOK_CLIENT_ID="${{ env.FACEBOOK_CLIENT_ID }}" \
             --set-env-vars=GOOGLE_CLIENT_ID="${{ env.GOOGLE_CLIENT_ID }}" \
             --set-env-vars=CLOUD_STORAGE_URL="${{ env.CLOUD_STORAGE_URL }}" \
@@ -115,45 +82,11 @@ jobs:
         run: |
           docker build \
             --build-arg RUST_ENV="${{ env.RUST_ENV }}" \
-            --build-arg RUST_LOG="${{ env.RUST_LOG }}" \
             -t gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:$GITHUB_SHA .
       - name: Configure Docker
         run: gcloud auth configure-docker --quiet
       - name: Push
         run: docker push gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:$GITHUB_SHA
-      # Create or update secrets in Secret Manager
-      - name: Create/Update Secrets
-        run: |
-          # Create Secret Manager secrets if they don't exist
-          echo -n "${{ env.FACEBOOK_CLIENT_SECRET }}" | \
-            gcloud secrets create facebook-client-secret --data-file=- --replication-policy="automatic" || \
-            echo -n "${{ env.FACEBOOK_CLIENT_SECRET }}" | \
-            gcloud secrets versions add facebook-client-secret --data-file=-
-
-          echo -n "${{ env.GOOGLE_CLIENT_SECRET }}" | \
-            gcloud secrets create google-client-secret --data-file=- --replication-policy="automatic" || \
-            echo -n "${{ env.GOOGLE_CLIENT_SECRET }}" | \
-            gcloud secrets versions add google-client-secret --data-file=-
-
-          echo -n "${{ env.JWT_SECRET }}" | \
-            gcloud secrets create jwt-secret --data-file=- --replication-policy="automatic" || \
-            echo -n "${{ env.JWT_SECRET }}" | \
-            gcloud secrets versions add jwt-secret --data-file=-
-
-          echo -n "${{ env.MONGODB_URI }}" | \
-            gcloud secrets create mongodb-uri --data-file=- --replication-policy="automatic" || \
-            echo -n "${{ env.MONGODB_URI }}" | \
-            gcloud secrets versions add mongodb-uri --data-file=-
-
-          echo -n "${{ env.STRIPE_SECRET_KEY }}" | \
-            gcloud secrets create stripe-secret-key --data-file=- --replication-policy="automatic" || \
-            echo -n "${{ env.STRIPE_SECRET_KEY }}" | \
-            gcloud secrets versions add stripe-secret-key --data-file=-
-
-          echo -n "${{ env.STRIPE_WEBHOOK_SECRET }}" | \
-            gcloud secrets create stripe-webhook-secret --data-file=- --replication-policy="automatic" || \
-            echo -n "${{ env.STRIPE_WEBHOOK_SECRET }}" | \
-            gcloud secrets versions add stripe-webhook-secret --data-file=-
       - name: Deploy
         run: |
           gcloud run deploy ${{ env.SERVICE_NAME }} \
@@ -161,6 +94,7 @@ jobs:
             --region ${{ env.REGION }} \
             --platform managed \
             --service-account=actota-api@${PROJECT_ID}.iam.gserviceaccount.com \
+            --clear-env-vars \
             --set-env-vars=FACEBOOK_CLIENT_ID="${{ env.FACEBOOK_CLIENT_ID }}" \
             --set-env-vars=GOOGLE_CLIENT_ID="${{ env.GOOGLE_CLIENT_ID }}" \
             --set-env-vars=CLOUD_STORAGE_URL="${{ env.CLOUD_STORAGE_URL }}" \
