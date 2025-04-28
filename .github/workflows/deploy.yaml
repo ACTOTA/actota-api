@@ -46,25 +46,34 @@ jobs:
         run: gcloud auth configure-docker --quiet
       - name: Push
         run: docker push gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:$GITHUB_SHA
-      - name: Deploy
+      - name: Create env vars file
+        run: |
+          cat > env.yaml << EOF
+          FACEBOOK_CLIENT_ID: "${{ env.FACEBOOK_CLIENT_ID }}"
+          GOOGLE_CLIENT_ID: "${{ env.GOOGLE_CLIENT_ID }}"
+          CLOUD_STORAGE_URL: "${{ env.CLOUD_STORAGE_URL }}"
+          FACEBOOK_REDIRECT_URI: "${{ env.FACEBOOK_REDIRECT_URI }}"
+          GOOGLE_REDIRECT_URI: "${{ env.GOOGLE_REDIRECT_URI }}"
+          FRONTEND_URL: "${{ env.FRONTEND_URL }}"
+          ITINERARY_BUCKET: "${{ env.ITINERARY_BUCKET }}"
+          PROFILE_PIC_BUCKET: "${{ env.PROFILE_PIC_BUCKET }}"
+          RUST_ENV: "${{ env.RUST_ENV }}"
+          RUST_LOG: "${{ env.RUST_LOG }}"
+          SERVICE_ACCOUNT_JSON: "{\"_\":\"_\"}"
+          EOF
+      - name: Clear existing env vars
+        run: |
+          gcloud run services update ${{ env.SERVICE_NAME }} \
+            --region ${{ env.REGION }} \
+            --clear-env-vars
+      - name: Deploy with new env vars
         run: |
           gcloud run deploy ${{ env.SERVICE_NAME }} \
             --image gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:$GITHUB_SHA \
             --region ${{ env.REGION }} \
             --platform managed \
             --service-account=actota-api@${PROJECT_ID}.iam.gserviceaccount.com \
-            --clear-env-vars \
-            --set-env-vars=FACEBOOK_CLIENT_ID="${{ env.FACEBOOK_CLIENT_ID }}" \
-            --set-env-vars=GOOGLE_CLIENT_ID="${{ env.GOOGLE_CLIENT_ID }}" \
-            --set-env-vars=CLOUD_STORAGE_URL="${{ env.CLOUD_STORAGE_URL }}" \
-            --set-env-vars=FACEBOOK_REDIRECT_URI="${{ env.FACEBOOK_REDIRECT_URI }}" \
-            --set-env-vars=GOOGLE_REDIRECT_URI="${{ env.GOOGLE_REDIRECT_URI }}" \
-            --set-env-vars=FRONTEND_URL="${{ env.FRONTEND_URL }}" \
-            --set-env-vars=ITINERARY_BUCKET="${{ env.ITINERARY_BUCKET }}" \
-            --set-env-vars=PROFILE_PIC_BUCKET="${{ env.PROFILE_PIC_BUCKET }}" \
-            --set-env-vars=RUST_ENV="${{ env.RUST_ENV }}" \
-            --set-env-vars=RUST_LOG="${{ env.RUST_LOG }}" \
-            --set-env-vars=SERVICE_ACCOUNT_JSON="{\"_\":\"_\"}" \
+            --env-vars-file=env.yaml \
             --set-secrets=FACEBOOK_CLIENT_SECRET=facebook-client-secret:latest,GOOGLE_CLIENT_SECRET=google-client-secret:latest,JWT_SECRET=jwt-secret:latest,MONGODB_URI=mongodb-uri:latest,STRIPE_SECRET_KEY=stripe-secret-key:latest,STRIPE_WEBHOOK_SECRET=stripe-webhook-secret:latest \
             --allow-unauthenticated
 
@@ -87,24 +96,33 @@ jobs:
         run: gcloud auth configure-docker --quiet
       - name: Push
         run: docker push gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:$GITHUB_SHA
-      - name: Deploy
+      - name: Create env vars file
+        run: |
+          cat > env.yaml << EOF
+          FACEBOOK_CLIENT_ID: "${{ env.FACEBOOK_CLIENT_ID }}"
+          GOOGLE_CLIENT_ID: "${{ env.GOOGLE_CLIENT_ID }}"
+          CLOUD_STORAGE_URL: "${{ env.CLOUD_STORAGE_URL }}"
+          FACEBOOK_REDIRECT_URI: "${{ env.FACEBOOK_REDIRECT_URI }}"
+          GOOGLE_REDIRECT_URI: "${{ env.GOOGLE_REDIRECT_URI }}"
+          FRONTEND_URL: "${{ env.FRONTEND_URL }}"
+          ITINERARY_BUCKET: "${{ env.ITINERARY_BUCKET }}"
+          PROFILE_PIC_BUCKET: "${{ env.PROFILE_PIC_BUCKET }}"
+          RUST_ENV: "${{ env.RUST_ENV }}"
+          RUST_LOG: "${{ env.RUST_LOG }}"
+          SERVICE_ACCOUNT_JSON: "{\"_\":\"_\"}"
+          EOF
+      - name: Clear existing env vars
+        run: |
+          gcloud run services update ${{ env.SERVICE_NAME }} \
+            --region ${{ env.REGION }} \
+            --clear-env-vars
+      - name: Deploy with new env vars
         run: |
           gcloud run deploy ${{ env.SERVICE_NAME }} \
             --image gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:$GITHUB_SHA \
             --region ${{ env.REGION }} \
             --platform managed \
             --service-account=actota-api@${PROJECT_ID}.iam.gserviceaccount.com \
-            --clear-env-vars \
-            --set-env-vars=FACEBOOK_CLIENT_ID="${{ env.FACEBOOK_CLIENT_ID }}" \
-            --set-env-vars=GOOGLE_CLIENT_ID="${{ env.GOOGLE_CLIENT_ID }}" \
-            --set-env-vars=CLOUD_STORAGE_URL="${{ env.CLOUD_STORAGE_URL }}" \
-            --set-env-vars=FACEBOOK_REDIRECT_URI="${{ env.FACEBOOK_REDIRECT_URI }}" \
-            --set-env-vars=GOOGLE_REDIRECT_URI="${{ env.GOOGLE_REDIRECT_URI }}" \
-            --set-env-vars=FRONTEND_URL="${{ env.FRONTEND_URL }}" \
-            --set-env-vars=ITINERARY_BUCKET="${{ env.ITINERARY_BUCKET }}" \
-            --set-env-vars=PROFILE_PIC_BUCKET="${{ env.PROFILE_PIC_BUCKET }}" \
-            --set-env-vars=RUST_ENV="${{ env.RUST_ENV }}" \
-            --set-env-vars=RUST_LOG="${{ env.RUST_LOG }}" \
-            --set-env-vars=SERVICE_ACCOUNT_JSON="{\"_\":\"_\"}" \
+            --env-vars-file=env.yaml \
             --set-secrets=FACEBOOK_CLIENT_SECRET=facebook-client-secret:latest,GOOGLE_CLIENT_SECRET=google-client-secret:latest,JWT_SECRET=jwt-secret:latest,MONGODB_URI=mongodb-uri:latest,STRIPE_SECRET_KEY=stripe-secret-key:latest,STRIPE_WEBHOOK_SECRET=stripe-webhook-secret:latest \
             --allow-unauthenticated
