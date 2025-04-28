@@ -1,55 +1,30 @@
 use crate::models::itinerary::FeaturedVacation;
-use cloud_storage::Client as StorageClient;
-use cloud_storage::ListRequest;
 use futures::future::join_all;
-use futures::StreamExt;
+use google_cloud_storage::client::{Client, ClientConfig};
+use google_cloud_storage::http::objects::list::ListObjectsRequest;
 use std::env;
-use std::path::Path;
-use tokio::pin;
 
-async fn create_configured_storage_client() -> StorageClient {
+// Create a storage client with automatic authentication
+async fn create_storage_client() -> Client {
     // Diagnostic logging
-    println!("Cloud Storage authentication setup:");
-    println!(
-        "  GOOGLE_APPLICATION_CREDENTIALS present: {}",
-        std::env::var("GOOGLE_APPLICATION_CREDENTIALS").is_ok()
-    );
-    println!(
-        "  SERVICE_ACCOUNT_JSON present: {}",
-        std::env::var("SERVICE_ACCOUNT_JSON").is_ok()
-    );
+    println!("Initializing Google Cloud Storage client");
+    let is_cloud_run = env::var("K_SERVICE").is_ok();
 
-    // Check if we're running in Cloud Run (where we should use ADC)
-    let is_cloud_run = std::env::var("K_SERVICE").is_ok();
-    
     if is_cloud_run {
         println!("Detected Cloud Run environment, using Application Default Credentials");
-        // For cloud_storage to use ADC, we need to set an empty SERVICE_ACCOUNT_JSON
-        std::env::set_var("SERVICE_ACCOUNT_JSON", "{}");
     } else {
-        // Local development
-        if std::env::var("SERVICE_ACCOUNT_JSON").is_err() {
-            // Try to use GOOGLE_APPLICATION_CREDENTIALS path to set SERVICE_ACCOUNT_JSON
-            if let Ok(creds_path) = std::env::var("GOOGLE_APPLICATION_CREDENTIALS") {
-                match std::fs::read_to_string(&creds_path) {
-                    Ok(content) => {
-                        println!("Setting SERVICE_ACCOUNT_JSON from GOOGLE_APPLICATION_CREDENTIALS file");
-                        std::env::set_var("SERVICE_ACCOUNT_JSON", content);
-                    }
-                    Err(e) => {
-                        println!("Warning: Could not read credentials file: {}", e);
-                        std::env::set_var("SERVICE_ACCOUNT_JSON", "{}");
-                    }
-                }
-            } else {
-                println!("Setting SERVICE_ACCOUNT_JSON to empty object to enable ADC");
-                std::env::set_var("SERVICE_ACCOUNT_JSON", "{}");
-            }
-        }
+        println!("Using local credentials (GOOGLE_APPLICATION_CREDENTIALS or ADC)");
     }
 
-    // Create the client using configured settings
-    StorageClient::default()
+    // The ClientConfig::default() automatically uses:
+    // 1. GOOGLE_APPLICATION_CREDENTIALS environment variable if set
+    // 2. Application Default Credentials (ADC) otherwise
+
+    let config = ClientConfig::default()
+        .with_auth()
+        .await
+        .expect("Unable to setup Cloud Storage config");
+    Client::new(config)
 }
 
 pub async fn get_images(mut vacations: Vec<FeaturedVacation>) -> Vec<FeaturedVacation> {
@@ -65,9 +40,10 @@ pub async fn get_images(mut vacations: Vec<FeaturedVacation>) -> Vec<FeaturedVac
 
     println!("Retrieving images from: {}/{}", base_url, bucket_name);
 
-    let storage_client = create_configured_storage_client().await;
+    // Create GCS client
+    let storage_client = create_storage_client().await;
 
-    // Create futures for each vacation
+    // Process each vacation to find its images
     let futures: Vec<_> = vacations
         .iter_mut()
         .map(|vacation| async {
@@ -78,36 +54,25 @@ pub async fn get_images(mut vacations: Vec<FeaturedVacation>) -> Vec<FeaturedVac
 
             println!("Looking for images for vacation ID: {}", vacation_id);
 
-            let list_request = ListRequest {
+            // Create list request with bucket name and prefix
+            let list_request = ListObjectsRequest {
+                bucket: bucket_name.clone(), // Include bucket name here
                 prefix: Some(vacation_id.clone()),
                 ..Default::default()
             };
 
             let mut files = Vec::new();
 
-            match storage_client
-                .object()
-                .list(&bucket_name, list_request)
-                .await
-            {
-                Ok(stream) => {
-                    pin!(stream);
+            // List objects in the bucket with the prefix
+            match storage_client.list_objects(&list_request).await {
+                Ok(response) => {
+                    for item in response.items.unwrap_or_default() {
+                        let name = &item.name;
 
-                    while let Some(object_result) = stream.next().await {
-                        match object_result {
-                            Ok(object) => {
-                                for item in object.items {
-                                    if item.name.ends_with(".jpg") || item.name.ends_with(".png") {
-                                        let url =
-                                            format!("{}/{}/{}", base_url, bucket_name, item.name);
-                                        println!("Found image: {}", url);
-                                        files.push(url);
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                println!("Error processing object in stream: {:?}", e);
-                            }
+                        if name.ends_with(".jpg") || name.ends_with(".png") {
+                            let url = format!("{}/{}/{}", base_url, bucket_name, name);
+                            println!("Found image: {}", url);
+                            files.push(url);
                         }
                     }
 
@@ -130,15 +95,17 @@ pub async fn get_images(mut vacations: Vec<FeaturedVacation>) -> Vec<FeaturedVac
     // Execute all futures concurrently
     let results = join_all(futures).await;
 
-    // Log any errors but still return vacations
+    // Process results and handle any errors
     let processed_vacations = results
         .into_iter()
-        .filter_map(|r: Result<FeaturedVacation, cloud_storage::Error>| {
-            if let Err(e) = &r {
-                println!("Error processing vacation images: {:?}", e);
-            }
-            r.ok()
-        })
+        .filter_map(
+            |r: Result<FeaturedVacation, google_cloud_storage::http::Error>| {
+                if let Err(e) = &r {
+                    println!("Error processing vacation images: {:?}", e);
+                }
+                r.ok()
+            },
+        )
         .collect::<Vec<FeaturedVacation>>();
 
     println!(

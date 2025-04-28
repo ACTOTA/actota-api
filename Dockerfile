@@ -39,9 +39,8 @@ EXPOSE 8080
 # Set runtime environment variables
 ENV RUST_LOG=actix_web=debug,actix_http=debug
 
-# Set empty SERVICE_ACCOUNT_JSON to force the use of Application Default Credentials
-# This is a special flag for the cloud_storage crate
-ENV SERVICE_ACCOUNT_JSON="{}"
+# No credential environment variables needed
+# The google-cloud-storage crate automatically uses Application Default Credentials
 
 # Run the application
 CMD ["/usr/local/bin/actota-api"]

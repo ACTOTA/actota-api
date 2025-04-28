@@ -1,10 +1,11 @@
 use actix_web::{web, HttpResponse, Responder};
+use google_cloud_storage::client::{Client as GcsClient, ClientConfig};
+use google_cloud_storage::http::objects::list::ListObjectsRequest;
 use mongodb::{bson::doc, Client};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::env;
 use std::sync::Arc;
-use cloud_storage::Client as StorageClient;
 
 #[derive(Serialize)]
 struct HealthStatus {
@@ -51,7 +52,7 @@ pub async fn health_check(client: web::Data<Arc<Client>>) -> impl Responder {
     health
         .services
         .insert("facebook_auth".to_string(), facebook_auth_result.clone());
-        
+
     // Check Cloud Storage connection
     let cloud_storage_result = check_cloud_storage().await;
     health
@@ -204,43 +205,55 @@ async fn check_cloud_storage() -> ServiceStatus {
     // Check if required environment variables are set
     let itinerary_bucket = env::var("ITINERARY_BUCKET").ok();
     let profile_pic_bucket = env::var("PROFILE_PIC_BUCKET").ok();
-    let _credentials_path = env::var("GOOGLE_APPLICATION_CREDENTIALS").ok();
-    
+
     if itinerary_bucket.is_none() || profile_pic_bucket.is_none() {
         let mut missing = Vec::new();
-        
+
         if itinerary_bucket.is_none() {
             missing.push("ITINERARY_BUCKET");
         }
         if profile_pic_bucket.is_none() {
             missing.push("PROFILE_PIC_BUCKET");
         }
-        
+
         return ServiceStatus {
             status: "error".to_string(),
-            details: Some(format!("Missing bucket configuration: {}", missing.join(", "))),
+            details: Some(format!(
+                "Missing bucket configuration: {}",
+                missing.join(", ")
+            )),
         };
     }
-    
+
     // Capture the bucket name before using it in the async operation
     let bucket_name = itinerary_bucket.as_ref().unwrap().clone();
-    
-    // Use a different approach to verify bucket existence
-    use cloud_storage::ListRequest;
-    let list_request = ListRequest {
-        max_results: Some(1), // We only need to check if we can list at least one item
+
+    // Create Google Cloud Storage client
+    let client_config = match ClientConfig::default().with_auth().await {
+        Ok(config) => config,
+        Err(e) => {
+            return ServiceStatus {
+                status: "error".to_string(),
+                details: Some(format!("Failed to initialize GCS client config: {}", e)),
+            };
+        }
+    };
+
+    let gcs_client = GcsClient::new(client_config);
+
+    // Create a list request for the bucket with a limit of 1 object
+    let list_request = ListObjectsRequest {
+        bucket: bucket_name.clone(),
+        max_results: Some(1),
         ..Default::default()
     };
-    
-    // Create a longer-lived client
-    let client = StorageClient::default();
-    let result = client.object().list(bucket_name.as_str(), list_request).await;
-    
-    match result {
+
+    // Test the connection by trying to list objects
+    match gcs_client.list_objects(&list_request).await {
         Ok(_) => ServiceStatus {
             status: "ok".to_string(),
             details: Some(format!(
-                "Connected to Cloud Storage: itinerary bucket '{}' accessible", 
+                "Connected to Cloud Storage: itinerary bucket '{}' accessible",
                 bucket_name
             )),
         },
@@ -250,4 +263,3 @@ async fn check_cloud_storage() -> ServiceStatus {
         },
     }
 }
-
