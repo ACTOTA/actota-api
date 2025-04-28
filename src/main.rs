@@ -41,11 +41,11 @@ fn setup_credentials() {
             existing_creds
         );
 
-        // For cloud-storage crate compatibility, also set SERVICE_ACCOUNT_JSON
+        // For cloud-storage crate compatibility, also set SERVICE_ACCOUNT
         // if the credentials file exists and can be read
         if let Ok(creds_content) = std::fs::read_to_string(&existing_creds) {
-            env::set_var("SERVICE_ACCOUNT_JSON", creds_content);
-            println!("Set SERVICE_ACCOUNT_JSON from credentials file");
+            env::set_var("SERVICE_ACCOUNT", creds_content);
+            println!("Set SERVICE_ACCOUNT from credentials file");
         }
 
         return;
@@ -82,9 +82,9 @@ fn setup_credentials() {
 fn setup_credentials() {
     println!("Setting up Google Cloud credentials for cloud deployment");
 
-    // Check if SERVICE_ACCOUNT_JSON is already explicitly set
-    if env::var("SERVICE_ACCOUNT_JSON").is_ok() {
-        println!("Using SERVICE_ACCOUNT_JSON from environment variable");
+    // Check if SERVICE_ACCOUNT is already explicitly set
+    if env::var("SERVICE_ACCOUNT").is_ok() {
+        println!("Using SERVICE_ACCOUNT from environment variable");
         return;
     }
 
@@ -106,7 +106,7 @@ fn setup_credentials() {
         "client_x509_cert_url": ""
     }"#;
 
-    env::set_var("SERVICE_ACCOUNT_JSON", minimal_sa);
+    env::set_var("SERVICE_ACCOUNT", minimal_sa);
 
     // Rest of your code remains the same
     if env::var("GOOGLE_APPLICATION_CREDENTIALS").is_err() {
