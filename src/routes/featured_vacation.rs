@@ -13,21 +13,20 @@ pub async fn get_all(data: web::Data<Arc<Client>>) -> impl Responder {
     let client = data.into_inner();
     let collection: mongodb::Collection<FeaturedVacation> =
         client.database("Itineraries").collection("Featured");
-
     match collection.find(doc! {}).await {
-        Ok(cursor) => match cursor.try_collect::<Vec<FeaturedVacation>>().await {
-            Ok(vacations) => {
-                let processed_vacations = get_images(vacations).await;
-                HttpResponse::Ok().json(processed_vacations)
+        Ok(mut cursor) => {
+            let mut valid_vacations = Vec::new();
+
+            while let Ok(Some(vacation)) = cursor.try_next().await {
+                valid_vacations.push(vacation);
             }
-            Err(err) => {
-                eprintln!("Failed to collect documents: {:?}", err);
-                return HttpResponse::InternalServerError().body("Failed to collect activities.");
-            }
-        },
+
+            let processed_vacations = get_images(valid_vacations).await;
+            HttpResponse::Ok().json(processed_vacations)
+        }
         Err(err) => {
             eprintln!("Failed to find documents: {:?}", err);
-            return HttpResponse::InternalServerError().body("Failed to find activities.");
+            return HttpResponse::InternalServerError().body("Failed to find itineraries.");
         }
     }
 }
