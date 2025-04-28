@@ -8,9 +8,11 @@ env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   SERVICE_NAME: actota-api
   REGION: us-central1
+  # Define these here for clarity, they will be accessed correctly in the job steps
   RUST_ENV: ${{vars.RUST_ENV}}
   FACEBOOK_CLIENT_ID: ${{secrets.FACEBOOK_CLIENT_ID}}
   FACEBOOK_CLIENT_SECRET: ${{secrets.FACEBOOK_CLIENT_SECRET}}
+  # GOOGLE_APPLICATION_CREDENTIALS: ${{secrets.GOOGLE_APPLICATION_CREDENTIALS}}
   GOOGLE_CLIENT_ID: ${{secrets.GOOGLE_CLIENT_ID}}
   GOOGLE_CLIENT_SECRET: ${{secrets.GOOGLE_CLIENT_SECRET}}
   JWT_SECRET: ${{secrets.JWT_SECRET}}
@@ -46,11 +48,15 @@ jobs:
         run: gcloud auth configure-docker --quiet
       - name: Push
         run: docker push gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:$GITHUB_SHA
-      - name: Clear problematic env vars
+      - name: Remove problematic env vars
         run: |
           gcloud run services update ${{ env.SERVICE_NAME }} \
             --region ${{ env.REGION }} \
-            --clear-env-vars=FACEBOOK_CLIENT_SECRET,GOOGLE_CLIENT_SECRET,JWT_SECRET,STRIPE_SECRET_KEY,STRIPE_WEBHOOK_SECRET
+            --remove-env-vars=FACEBOOK_CLIENT_SECRET \
+            --remove-env-vars=GOOGLE_CLIENT_SECRET \
+            --remove-env-vars=JWT_SECRET \
+            --remove-env-vars=STRIPE_SECRET_KEY \
+            --remove-env-vars=STRIPE_WEBHOOK_SECRET
       - name: Deploy
         run: |
           gcloud run deploy ${{ env.SERVICE_NAME }} \
@@ -94,11 +100,15 @@ jobs:
         run: gcloud auth configure-docker --quiet
       - name: Push
         run: docker push gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:$GITHUB_SHA
-      - name: Clear problematic env vars
+      - name: Remove problematic env vars
         run: |
           gcloud run services update ${{ env.SERVICE_NAME }} \
             --region ${{ env.REGION }} \
-            --clear-env-vars=FACEBOOK_CLIENT_SECRET,GOOGLE_CLIENT_SECRET,JWT_SECRET,STRIPE_SECRET_KEY,STRIPE_WEBHOOK_SECRET
+            --remove-env-vars=FACEBOOK_CLIENT_SECRET \
+            --remove-env-vars=GOOGLE_CLIENT_SECRET \
+            --remove-env-vars=JWT_SECRET \
+            --remove-env-vars=STRIPE_SECRET_KEY \
+            --remove-env-vars=STRIPE_WEBHOOK_SECRET
       - name: Deploy
         run: |
           gcloud run deploy ${{ env.SERVICE_NAME }} \
