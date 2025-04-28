@@ -77,10 +77,9 @@ fn setup_credentials() {
     }
 }
 
-// For Google Cloud Run deployment
 #[cfg(not(debug_assertions))]
 fn setup_credentials() {
-    println!("Setting up Google Cloud credentials for cloud deployment");
+    println!("Setting up Google Cloud credentials for production");
 
     // Check if SERVICE_ACCOUNT is already explicitly set
     if env::var("SERVICE_ACCOUNT").is_ok() {
@@ -88,30 +87,44 @@ fn setup_credentials() {
         return;
     }
 
-    // Don't set a placeholder for SERVICE_ACCOUNT_JSON
-    // Instead, create a temporary credentials file for cloud-storage
-    println!("Creating temporary default credentials for cloud-storage");
+    // Create a temporary credentials file
+    use std::io::Write;
+    let temp_dir = std::env::temp_dir();
+    let sa_path = temp_dir.join("gcp-credentials.json");
 
-    // Option 1: Create minimal valid service account JSON
+    // Minimal valid service account JSON
     let minimal_sa = r#"{
         "type": "service_account",
         "project_id": "actota",
-        "private_key_id": "",
-        "private_key": "",
-        "client_email": "actota-api@actota.iam.gserviceaccount.com",
-        "client_id": "",
+        "private_key_id": "temp",
+        "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7VJTUt9Us8cKj\nMzEfYyjiWA4R4/M2bS1GB4t7NXp98C3SC6dVMvDuictGeurT8jNbvJZHtCSuYEvu\nNMoSfm76oqFvAp8Gy0iz5sxjZmSnXyCdPEovGhLa0VzMaQ8s+CLOyS56YyCFGeJZ\n-----END PRIVATE KEY-----\n",
+        "client_email": "dummy@actota.iam.gserviceaccount.com",
+        "client_id": "000000000000000000000",
         "auth_uri": "https://accounts.google.com/o/oauth2/auth",
         "token_uri": "https://oauth2.googleapis.com/token",
         "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-        "client_x509_cert_url": ""
+        "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/dummy%40actota.iam.gserviceaccount.com"
     }"#;
 
-    env::set_var("SERVICE_ACCOUNT", minimal_sa);
+    // Write to the file
+    let mut file = std::fs::File::create(&sa_path).expect("Failed to create temp credentials file");
+    file.write_all(minimal_sa.as_bytes())
+        .expect("Failed to write credentials");
 
-    // Rest of your code remains the same
+    // Point SERVICE_ACCOUNT to the file path, not the JSON content
+    let path_str = sa_path.to_str().expect("Invalid path");
+    println!("Created temporary credentials at: {}", path_str);
+
+    // Set the environment variable to the FILE PATH
+    env::set_var("SERVICE_ACCOUNT", path_str);
+
+    // Also set for backward compatibility
+    env::set_var("SERVICE_ACCOUNT_JSON", path_str);
+
+    // We might also want to set GOOGLE_APPLICATION_CREDENTIALS for other libraries
     if env::var("GOOGLE_APPLICATION_CREDENTIALS").is_err() {
-        println!("Setting GOOGLE_APPLICATION_CREDENTIALS to 'use-adc'");
-        env::set_var("GOOGLE_APPLICATION_CREDENTIALS", "use-adc");
+        println!("Setting GOOGLE_APPLICATION_CREDENTIALS to the temp file");
+        env::set_var("GOOGLE_APPLICATION_CREDENTIALS", path_str);
     } else {
         println!("Using existing GOOGLE_APPLICATION_CREDENTIALS value");
     }
