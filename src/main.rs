@@ -1,10 +1,9 @@
-use std::{env, path::PathBuf};
+use std::{env, path::PathBuf, sync::Arc};
 
 use actix_cors::Cors;
-use actix_web::{
-    middleware::Logger, web, App, Error, HttpRequest, HttpResponse, HttpServer, Responder,
-};
+use actix_web::{middleware::Logger, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use env_logger::Env;
+use routes::payment::{handle_stripe_webhook, StripeConfig};
 
 mod db;
 mod middleware;
@@ -12,8 +11,8 @@ mod models;
 mod routes;
 mod services;
 
-// Diagnostic endpoint to help debug HTTP/2 issues
-async fn protocol_info(req: HttpRequest) -> impl Responder {
+// General request diagnostic endpoint
+async fn request_info(req: HttpRequest) -> impl Responder {
     let protocol = req.connection_info().scheme().to_string();
     let version = format!("{:?}", req.version());
 
@@ -30,32 +29,66 @@ async fn protocol_info(req: HttpRequest) -> impl Responder {
     ))
 }
 
+// Setup credentials for local development
 #[cfg(debug_assertions)]
 fn setup_credentials() {
-    println!("Setting up credentials for local development");
+    println!("Setting up Google Cloud credentials for development");
 
+    // Check if credentials are already set in the environment
+    if let Ok(existing_creds) = env::var("GOOGLE_APPLICATION_CREDENTIALS") {
+        println!(
+            "Using Google credentials from environment variable: {}",
+            existing_creds
+        );
+        return;
+    }
+
+    // Fall back to file-based credentials for local development only
     let credentials_path = PathBuf::from("credentials/service-account.json");
-    env::set_var(
-        "GOOGLE_APPLICATION_CREDENTIALS",
-        credentials_path.to_str().unwrap(),
-    );
+    if credentials_path.exists() {
+        println!(
+            "Using Google credentials from file: {}",
+            credentials_path.display()
+        );
 
-    println!("Credentials setup complete");
+        // Set path-based credential variable
+        env::set_var(
+            "GOOGLE_APPLICATION_CREDENTIALS",
+            credentials_path.to_str().unwrap_or_default(),
+        );
+    } else {
+        println!("No explicit Google credentials found. Using Application Default Credentials.");
+    }
+}
+
+#[cfg(not(debug_assertions))]
+fn setup_credentials() {
+    println!("Setting up Google Cloud credentials for production");
+
+    // Check if we're running in Cloud Run
+    let is_cloud_run = env::var("K_SERVICE").is_ok();
+    
+    if is_cloud_run {
+        println!("Detected Cloud Run environment - using Application Default Credentials");
+        // When running in Cloud Run, the google-cloud-storage crate 
+        // will automatically use the service account attached to the service
+    } else {
+        println!("Not running in Cloud Run - will try to use local Application Default Credentials");
+    }
 }
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     println!("Application starting...");
 
-    // Setup credentials for local development
-    #[cfg(debug_assertions)]
+    // Setup credentials for both development and production
     setup_credentials();
 
-    // Initialize logging with more detailed HTTP/2 logs
+    // Initialize logging
     env_logger::init_from_env(
-        Env::default().default_filter_or("info,actix_web=debug,actix_http=debug,h2=debug"),
+        Env::default().default_filter_or("info,actix_web=debug,actix_http=debug"),
     );
-    println!("Logger initialized with HTTP/2 debugging enabled");
+    println!("Logger initialized");
 
     if cfg!(debug_assertions) {
         dotenv::dotenv().ok();
@@ -78,7 +111,21 @@ async fn main() -> std::io::Result<()> {
     let client = db::mongo::create_mongo_client(&mongo_uri).await;
     println!("MongoDB connection established successfully");
 
-    // Create and configure the HTTP server with HTTP/2 support
+    // Initialize the Stripe client
+    println!("Initializing Stripe client...");
+    let stripe_secret_key =
+        std::env::var("STRIPE_SECRET_KEY").expect("STRIPE_SECRET_KEY must be set");
+    let stripe_client = Arc::new(stripe::Client::new(stripe_secret_key));
+    let stripe_data = web::Data::new(stripe_client);
+    println!("Stripe client initialized successfully");
+
+    // Initialize the Stripe configuration for webhook
+    let stripe_config = StripeConfig {
+        webhook_secret: std::env::var("STRIPE_WEBHOOK_SECRET")
+            .expect("STRIPE_WEBHOOK_SECRET must be set"),
+    };
+
+    // Create and configure the HTTP server (HTTP/1.1 only)
     HttpServer::new(move || {
         App::new()
             // Add middleware
@@ -104,8 +151,8 @@ async fn main() -> std::io::Result<()> {
                 .into()
             }))
             // Add diagnostic endpoints
-            .route("/health", web::get().to(|| async { "OK" }))
-            .route("/protocol-info", web::get().to(protocol_info))
+            .route("/health", web::get().to(routes::health::health_check))
+            .route("/request-info", web::get().to(request_info))
             .route(
                 "/",
                 web::get().to(|| async {
@@ -115,7 +162,10 @@ async fn main() -> std::io::Result<()> {
                 }),
             )
             // Share MongoDB client with all routes
+            .app_data(stripe_data.clone())
             .app_data(web::Data::new(client.clone()))
+            .app_data(web::Data::new(stripe_config.clone()))
+            .route("/stripe/webhook", web::post().to(handle_stripe_webhook))
             // Add API routes
             .service(
                 web::scope("/api")
@@ -147,12 +197,29 @@ async fn main() -> std::io::Result<()> {
                             )),
                     )
                     .service(
+                        web::scope("payment")
+                            .wrap(middleware::auth::AuthMiddleware)
+                            .route(
+                                "/payment-intent",
+                                web::post().to(routes::payment::create_payment_intent),
+                            )
+                            .route(
+                                "/capture-payment",
+                                web::post().to(routes::payment::capture_payment),
+                            ),
+                    )
+                    .service(
                         // Protected routes
                         web::scope("/account")
                             .wrap(middleware::auth::AuthMiddleware)
                             .route(
                                 "/{id}",
                                 web::get()
+                                    .to(routes::account::account_info::get_personal_information),
+                            )
+                            .route(
+                                "/{id}",
+                                web::put()
                                     .to(routes::account::account_info::update_personal_information),
                             )
                             .route(
@@ -168,6 +235,22 @@ async fn main() -> std::io::Result<()> {
                                 web::delete().to(routes::account::favorites::remove_favorite),
                             )
                             .route(
+                                "/{id}/bookings",
+                                web::get().to(routes::account::bookings::get_all_bookings),
+                            )
+                            .route(
+                                "/{id}/bookings/{itinerary_id}",
+                                web::get().to(routes::account::bookings::get_booking),
+                            )
+                            .route(
+                                "/{id}/bookings/{itinerary_id}",
+                                web::post().to(routes::account::bookings::add_booking),
+                            )
+                            .route(
+                                "/{id}/bookings/{itinerary_id}",
+                                web::delete().to(routes::account::bookings::remove_booking),
+                            )
+                            .route(
                                 "/{id}/payment-methods",
                                 web::get()
                                     .to(routes::account::payment_methods::get_payment_methods),
@@ -178,10 +261,28 @@ async fn main() -> std::io::Result<()> {
                                     .to(routes::account::payment_methods::add_payment_method),
                             )
                             .route(
+                                "/{id}/transactions",
+                                web::get().to(routes::account::transactions::get_transactions),
+                            )
+                            .route(
                                 "/{id}/customer",
                                 web::post()
                                     .to(routes::account::payment_methods::get_or_create_customer),
-                            ),
+                            )
+                            .route(
+                                "/{id}/payment-methods/{pm_id}",
+                                web::delete()
+                                    .to(routes::account::payment_methods::remove_payment_method),
+                            ), // .route(
+                               //     "/{id}/attach-payment-method",
+                               //     web::post()
+                               //         .to(routes::account::payment_methods::attach_payment_method),
+                               // )
+                               // .route(
+                               //     "/{id}/detach-payment-method",
+                               //     web::post()
+                               //         .to(routes::account::payment_methods::detach_payment_method),
+                               // ),
                     )
                     .service(
                         web::scope("")
@@ -205,10 +306,16 @@ async fn main() -> std::io::Result<()> {
                             )
                             .service(
                                 web::scope("/itineraries")
+                                    // Public routes
                                     .route(
                                         "/featured",
                                         web::get().to(routes::featured_vacation::get_all),
                                     )
+                                    // Get all itineraries or search with filters
+                                    .route("", web::get().to(routes::itinerary::get_all))
+                                    .route("", web::post().to(routes::itinerary::get_all))
+                                    // Public route for getting itinerary by ID
+                                    .route("/{id}", web::get().to(routes::itinerary::get_by_id))
                                     // Protected routes
                                     .service(
                                         web::scope("")
@@ -220,25 +327,18 @@ async fn main() -> std::io::Result<()> {
                                             .route(
                                                 "/find",
                                                 web::post().to(routes::dream_vacation::find),
-                                            )
-                                            .route(
-                                                "/{id}",
-                                                web::get().to(routes::itinerary::get_by_id),
                                             ),
                                     ),
                             ),
                     ),
             )
     })
-    // HTTP/2 configuration
+    // HTTP/1.1 configuration
     .bind(("0.0.0.0", port))?
     .server_hostname("actota-api") // Set a server hostname
-    .workers(4) // Use 4 workers for better concurrency
     .keep_alive(std::time::Duration::from_secs(75)) // Set an appropriate keep-alive timeout
     .client_request_timeout(std::time::Duration::from_secs(60)) // Set request timeout
     .backlog(1024) // Increase the connection backlog for better performance under load
-    // .http2_keep_alive_interval(std::time::Duration::from_secs(20)) // HTTP/2 specific keep-alive
-    // .http2_max_concurrent_streams(250) // Allow more concurrent streams for HTTP/2
     .run()
     .await
 }

@@ -24,7 +24,7 @@ pub async fn add_favorite(
 
     // Verify itinerary exists in the database
     let itinerary: mongodb::Collection<FeaturedVacation> =
-        client.database("Itinerary").collection("Featured");
+        client.database("Itineraries").collection("Featured");
     if itinerary
         .find_one(doc! { "_id": ObjectId::parse_str(&itinerary_id).unwrap() })
         .await

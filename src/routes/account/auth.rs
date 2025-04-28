@@ -140,6 +140,7 @@ pub async fn user_session(
                     email: user.email,
                     first_name: user.first_name.unwrap_or_default(),
                     last_name: user.last_name.unwrap_or_default(),
+                    customer_id: user.customer_id,
                     created_at: user.created_at.unwrap_or_default(),
                 };
                 HttpResponse::Ok().json(user_session)
