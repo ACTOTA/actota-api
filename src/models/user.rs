@@ -9,6 +9,7 @@ pub struct UserSession {
     pub email: String,
     pub first_name: String,
     pub last_name: String,
+    pub customer_id: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 

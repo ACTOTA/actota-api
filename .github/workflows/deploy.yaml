@@ -1,0 +1,116 @@
+name: Deploy to Cloud Run
+on:
+  push:
+    branches:
+      - main
+      - uat
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  SERVICE_NAME: actota-api
+  REGION: us-central1
+  # Define these here for clarity, they will be accessed correctly in the job steps
+  RUST_ENV: ${{vars.RUST_ENV}}
+  FACEBOOK_CLIENT_ID: ${{secrets.FACEBOOK_CLIENT_ID}}
+  FACEBOOK_CLIENT_SECRET: ${{secrets.FACEBOOK_CLIENT_SECRET}}
+  GOOGLE_CLIENT_ID: ${{secrets.GOOGLE_CLIENT_ID}}
+  GOOGLE_CLIENT_SECRET: ${{secrets.GOOGLE_CLIENT_SECRET}}
+  JWT_SECRET: ${{secrets.JWT_SECRET}}
+  MONGODB_URI: ${{secrets.MONGODB_URI}}
+  STRIPE_SECRET_KEY: ${{secrets.STRIPE_SECRET_KEY}}
+  STRIPE_WEBHOOK_SECRET: ${{secrets.STRIPE_WEBHOOK_SECRET}}
+  CLOUD_STORAGE_URL: ${{vars.CLOUD_STORAGE_URL}}
+  FACEBOOK_REDIRECT_URI: ${{vars.FACEBOOK_REDIRECT_URI}}
+  GOOGLE_REDIRECT_URI: ${{vars.GOOGLE_REDIRECT_URI}}
+  FRONTEND_URL: ${{vars.FRONTEND_URL}}
+  ITINERARY_BUCKET: ${{vars.ITINERARY_BUCKET}}
+  PROFILE_PIC_BUCKET: ${{vars.PROFILE_PIC_BUCKET}}
+  RUST_LOG: ${{vars.RUST_LOG}}
+jobs:
+  deploy-uat:
+    if: github.ref == 'refs/heads/uat'
+    runs-on: ubuntu-latest
+    environment: UAT
+    steps:
+      - uses: actions/checkout@v3
+      - id: 'auth'
+        uses: 'google-github-actions/auth@v1'
+        with:
+          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+      # Build the Docker image, passing only build-time arguments
+      - name: Build
+        run: |
+          docker build \
+            --build-arg RUST_ENV="${{ env.RUST_ENV }}" \
+            -t gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:$GITHUB_SHA .
+      - name: Configure Docker
+        run: gcloud auth configure-docker --quiet
+      - name: Push
+        run: docker push gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:$GITHUB_SHA
+      - name: Create env vars file
+        run: |
+          cat > env.yaml << EOF
+          FACEBOOK_CLIENT_ID: "${{ env.FACEBOOK_CLIENT_ID }}"
+          GOOGLE_CLIENT_ID: "${{ env.GOOGLE_CLIENT_ID }}"
+          CLOUD_STORAGE_URL: "${{ env.CLOUD_STORAGE_URL }}"
+          FACEBOOK_REDIRECT_URI: "${{ env.FACEBOOK_REDIRECT_URI }}"
+          GOOGLE_REDIRECT_URI: "${{ env.GOOGLE_REDIRECT_URI }}"
+          FRONTEND_URL: "${{ env.FRONTEND_URL }}"
+          ITINERARY_BUCKET: "${{ env.ITINERARY_BUCKET }}"
+          PROFILE_PIC_BUCKET: "${{ env.PROFILE_PIC_BUCKET }}"
+          RUST_ENV: "${{ env.RUST_ENV }}"
+          RUST_LOG: "${{ env.RUST_LOG }}"
+          EOF
+      - name: Deploy with env vars
+        run: |
+          gcloud run deploy ${{ env.SERVICE_NAME }} \
+            --image gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:$GITHUB_SHA \
+            --region ${{ env.REGION }} \
+            --platform managed \
+            --service-account=actota-api@${PROJECT_ID}.iam.gserviceaccount.com \
+            --env-vars-file=env.yaml \
+            --update-secrets=FACEBOOK_CLIENT_SECRET=FACEBOOK_CLIENT_SECRET:latest,GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET:latest,JWT_SECRET=JWT_SECRET:latest,MONGODB_URI=MONGODB_URI:latest,STRIPE_SECRET_KEY=STRIPE_SECRET_KEY:latest,STRIPE_WEBHOOK_SECRET=STRIPE_WEBHOOK_SECRET:latest \
+            --allow-unauthenticated
+
+  deploy-prod:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v3
+      - id: 'auth'
+        uses: 'google-github-actions/auth@v1'
+        with:
+          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+      - name: Build
+        run: |
+          docker build \
+            --build-arg RUST_ENV="${{ env.RUST_ENV }}" \
+            -t gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:$GITHUB_SHA .
+      - name: Configure Docker
+        run: gcloud auth configure-docker --quiet
+      - name: Push
+        run: docker push gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:$GITHUB_SHA
+      - name: Create env vars file
+        run: |
+          cat > env.yaml << EOF
+          FACEBOOK_CLIENT_ID: "${{ env.FACEBOOK_CLIENT_ID }}"
+          GOOGLE_CLIENT_ID: "${{ env.GOOGLE_CLIENT_ID }}"
+          CLOUD_STORAGE_URL: "${{ env.CLOUD_STORAGE_URL }}"
+          FACEBOOK_REDIRECT_URI: "${{ env.FACEBOOK_REDIRECT_URI }}"
+          GOOGLE_REDIRECT_URI: "${{ env.GOOGLE_REDIRECT_URI }}"
+          FRONTEND_URL: "${{ env.FRONTEND_URL }}"
+          ITINERARY_BUCKET: "${{ env.ITINERARY_BUCKET }}"
+          PROFILE_PIC_BUCKET: "${{ env.PROFILE_PIC_BUCKET }}"
+          RUST_ENV: "${{ env.RUST_ENV }}"
+          RUST_LOG: "${{ env.RUST_LOG }}"
+          EOF
+      - name: Deploy with env vars
+        run: |
+          gcloud run deploy ${{ env.SERVICE_NAME }} \
+            --image gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:$GITHUB_SHA \
+            --region ${{ env.REGION }} \
+            --platform managed \
+            --service-account=actota-api@${PROJECT_ID}.iam.gserviceaccount.com \
+            --env-vars-file=env.yaml \
+            --update-secrets=FACEBOOK_CLIENT_SECRET=FACEBOOK_CLIENT_SECRET:latest,GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET:latest,JWT_SECRET=JWT_SECRET:latest,MONGODB_URI=MONGODB_URI:latest,STRIPE_SECRET_KEY=STRIPE_SECRET_KEY:latest,STRIPE_WEBHOOK_SECRET=STRIPE_WEBHOOK_SECRET:latest \
+            --allow-unauthenticated

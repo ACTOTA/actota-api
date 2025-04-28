@@ -1,0 +1,26 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      platforms:
+        - linux/amd64
+        - linux/arm64
+    ports:
+      - "8080:8080"
+    volumes:
+      - .:/usr/src/app  # Mount the current directory as the app directory
+      - backend_cargo_cache:/usr/local/cargo/registry  # Cache cargo registry
+    env_file:
+      - .env
+    command: cargo watch -x run
+    networks:
+      - actota-network  # Simply list the network name here
+
+volumes:
+  backend_cargo_cache:
+    driver: local
+
+networks:
+  actota-network:  # Define the network here at the root level
+    external: true

@@ -8,7 +8,7 @@ use crate::{
     middleware::auth::Claims,
     models::account::User,
     services::{
-        payment::interface::{CustomerError, PaymentError, PaymentOperations},
+        payment::interface::{CustomerError, PaymentOperations},
         stripe::{models::customer::CustomerData, provider::StripeProvider},
     },
 };
@@ -18,6 +18,20 @@ use crate::{
 struct CustomerResponse {
     customer_id: String,
     created: bool,
+}
+
+// Request struct for attach_payment_method
+#[derive(Serialize, Deserialize)]
+pub struct AttachPaymentMethod {
+    customer_id: String,
+    payment_id: String,
+    default: bool,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct DetachPaymentMethod {
+    customer_id: String,
+    payment_id: String,
 }
 
 // Check for customer_id
@@ -162,7 +176,11 @@ pub async fn get_or_create_customer(
     path: web::Path<String>,
     claims: Claims,
 ) -> impl Responder {
+    println!("INSIDE GET CUSTOMER");
+
     let user_id = path.into_inner();
+    println!("UserId: {:?}", user_id);
+    println!("Claim: {:?}", claims.user_id);
 
     // Verify user has permission
     if user_id != claims.user_id {
@@ -250,3 +268,71 @@ pub async fn get_or_create_customer(
         created: true,
     })
 }
+
+pub async fn remove_payment_method(
+    data: web::Data<Arc<Client>>,
+    path: web::Path<(String, String)>,
+    claims: Claims,
+) -> impl Responder {
+    let (user_id, payment_id) = path.into_inner();
+
+    // Verify user has permission
+    if user_id != claims.user_id {
+        return HttpResponse::Forbidden().body("Forbidden");
+    }
+
+    // Get customer_id from the database
+    let client = data.into_inner();
+    let customer_id = match get_customer_id(&client, user_id).await {
+        Some(id) => id,
+        None => {
+            return HttpResponse::NotFound().body("Customer not found");
+        }
+    };
+
+    let stripe_op = StripeProvider::new(std::env::var("STRIPE_SECRET_KEY").unwrap());
+
+    match stripe_op
+        .detach_payment_method(customer_id, payment_id)
+        .await
+    {
+        Ok(res) => return res,
+        Err(err) => {
+            eprintln!("Failed to remove payment method: {:?}", err);
+            return HttpResponse::InternalServerError().body("Failed to remove payment method");
+        }
+    }
+}
+
+// pub async fn attach_payment_method(input: web::Json<AttachPaymentMethod>) -> impl Responder {
+//     let stripe_op = StripeProvider::new(std::env::var("STRIPE_SECRET_KEY").unwrap());
+//     let customer_id = &input.customer_id;
+//     let payment_id = &input.payment_id;
+//     let _default = input.default;
+//
+//     match stripe_op
+//         .attach_payment_method(customer_id.to_string(), payment_id.to_string())
+//         .await
+//     {
+//         Ok(res) => return res,
+//         Err(_) => {
+//             return HttpResponse::InternalServerError().body("Failed to attach payment method")
+//         }
+//     }
+// }
+
+// pub async fn detach_payment_method(input: web::Json<DetachPaymentMethod>) -> impl Responder {
+//     let stripe_op = StripeProvider::new(std::env::var("STRIPE_SECRET_KEY").unwrap());
+//     let customer_id = &input.customer_id;
+//     let payment_id = &input.payment_id;
+//
+//     match stripe_op
+//         .detach_payment_method(customer_id.to_string(), payment_id.to_string())
+//         .await
+//     {
+//         Ok(res) => return res,
+//         Err(_) => {
+//             return HttpResponse::InternalServerError().body("Failed to detach payment method")
+//         }
+//     }
+// }

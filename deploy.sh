@@ -12,7 +12,6 @@ IMAGE_NAME="gcr.io/${PROJECT_ID}/${SERVICE_NAME}"
 echo "=== Checking prerequisites ==="
 command -v gcloud >/dev/null 2>&1 || { echo "Error: gcloud CLI is required but not installed. Please install it."; exit 1; }
 command -v docker >/dev/null 2>&1 || { echo "Error: docker is required but not installed. Please install it."; exit 1; }
-[ -f .env ] || { echo "Error: .env file not found. Please create one based on .env.example"; exit 1; }
 
 echo "=== Starting deployment of ${SERVICE_NAME} to Google Cloud Run ==="
 
@@ -27,24 +26,21 @@ docker buildx build --platform linux/amd64 \
   --push \
   .
 
-# Format environment variables for deployment
-echo "=== Preparing environment variables ==="
-ENV_VARS=""
-while IFS= read -r line || [[ -n "$line" ]]; do
-    # Skip empty lines and comments
-    if [[ -n "$line" && ! "$line" =~ ^\# ]]; then
-        # Add the line as an environment variable
-        ENV_VARS="${ENV_VARS} --set-env-vars=${line}"
-    fi
-done < .env
-
 # Deploy to Cloud Run
 echo "=== Deploying to Cloud Run ==="
 gcloud run deploy ${SERVICE_NAME} \
-  --image ${IMAGE_NAME} \
+  --image ${IMAGE_NAME}:amd64 \
   --platform managed \
   --region ${REGION} \
-  ${ENV_VARS} \
+  --set-env-vars="RUST_LOG=actix_web=debug" \
+  --set-env-vars="CLOUD_STORAGE_URL=https://storage.googleapis.com" \
+  --set-env-vars="ITINERARY_BUCKET=actota-itineraries" \
+  --set-env-vars="PROFILE_PIC_BUCKET=actota-profile-pictures" \
+  --set-env-vars="GOOGLE_CLIENT_ID=324035621794-2ahq7okguqovgd84l9pehjnjc43oh3j4.apps.googleusercontent.com" \
+  --set-env-vars="GOOGLE_REDIRECT_URI=https://actota-api-324035621794.us-central1.run.app/api/auth/google/callback" \
+  --set-env-vars="FACEBOOK_CLIENT_ID=536393542826375" \
+  --set-env-vars="FACEBOOK_REDIRECT_URI=https://actota-api-324035621794.us-central1.run.app/api/auth/facebook/callback" \
+  --set-env-vars="FRONTEND_URL=https://actota-frontend-324035621794.us-central1.run.app" \
   --service-account actota-api@${PROJECT_ID}.iam.gserviceaccount.com \
   --allow-unauthenticated \
   --cpu=1 \

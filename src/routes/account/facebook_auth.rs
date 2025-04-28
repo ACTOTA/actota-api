@@ -107,7 +107,6 @@ pub async fn facebook_auth_callback(
                 last_signin: Some(now),
                 last_signin_ip: None,
                 failed_signins: Some(0),
-                personal_information: None,
                 notification: None,
                 created_at: Some(now),
                 updated_at: Some(now),

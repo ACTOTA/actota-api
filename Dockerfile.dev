@@ -1,0 +1,36 @@
+FROM rust:slim-bookworm
+
+# Install build dependencies and cargo-watch
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    libssl-dev \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && cargo install cargo-watch
+
+# Create app directory
+WORKDIR /usr/src/app
+
+# Create a directory for configuration files
+RUN mkdir -p /app/config
+
+# Copy only the Cargo.toml and Cargo.lock files to cache dependencies
+COPY Cargo.toml Cargo.lock* ./
+
+# Create a dummy src/main.rs to build dependencies
+RUN mkdir -p src && \
+    echo "fn main() { println!(\"Dummy\"); }" > src/main.rs && \
+    cargo build && \
+    rm -rf src
+
+# Copy your source code
+COPY . .
+
+# Expose the port
+EXPOSE 8080
+
+# Set runtime environment variables
+ENV RUST_LOG=actix_web=debug,actix_http=debug
+
+# Run cargo watch to automatically rebuild on changes
+CMD ["cargo", "watch", "-x", "run"]
