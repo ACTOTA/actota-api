@@ -19,16 +19,36 @@ async fn create_configured_storage_client() -> StorageClient {
         std::env::var("SERVICE_ACCOUNT_JSON").is_ok()
     );
 
-    // Force cloud_storage to use ADC by setting empty credentials
-    // This is necessary because the crate requires SERVICE_ACCOUNT_JSON
-    // to be set, even when we want to use ADC
-    if std::env::var("SERVICE_ACCOUNT_JSON").is_err() {
-        println!("Setting SERVICE_ACCOUNT_JSON to empty object to enable ADC");
+    // Check if we're running in Cloud Run (where we should use ADC)
+    let is_cloud_run = std::env::var("K_SERVICE").is_ok();
+    
+    if is_cloud_run {
+        println!("Detected Cloud Run environment, using Application Default Credentials");
+        // For cloud_storage to use ADC, we need to set an empty SERVICE_ACCOUNT_JSON
         std::env::set_var("SERVICE_ACCOUNT_JSON", "{}");
+    } else {
+        // Local development
+        if std::env::var("SERVICE_ACCOUNT_JSON").is_err() {
+            // Try to use GOOGLE_APPLICATION_CREDENTIALS path to set SERVICE_ACCOUNT_JSON
+            if let Ok(creds_path) = std::env::var("GOOGLE_APPLICATION_CREDENTIALS") {
+                match std::fs::read_to_string(&creds_path) {
+                    Ok(content) => {
+                        println!("Setting SERVICE_ACCOUNT_JSON from GOOGLE_APPLICATION_CREDENTIALS file");
+                        std::env::set_var("SERVICE_ACCOUNT_JSON", content);
+                    }
+                    Err(e) => {
+                        println!("Warning: Could not read credentials file: {}", e);
+                        std::env::set_var("SERVICE_ACCOUNT_JSON", "{}");
+                    }
+                }
+            } else {
+                println!("Setting SERVICE_ACCOUNT_JSON to empty object to enable ADC");
+                std::env::set_var("SERVICE_ACCOUNT_JSON", "{}");
+            }
+        }
     }
 
-    // Create the client using default settings, which will use ADC
-    // when SERVICE_ACCOUNT_JSON is empty
+    // Create the client using configured settings
     StorageClient::default()
 }
 

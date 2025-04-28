@@ -27,23 +27,8 @@ RUN apt-get update && apt-get install -y \
     libssl3 \
     && rm -rf /var/lib/apt/lists/*
 
-# Create a directory for configuration files
+# Create a directory for any required configuration files
 RUN mkdir -p /app/config
-
-# Create a minimal but valid service account JSON structure
-# This satisfies the format requirements without containing real credentials
-RUN echo '{ \
-  "type": "service_account", \
-  "project_id": "dummy-project", \
-  "private_key_id": "dummy", \
-  "private_key": "-----BEGIN PRIVATE KEY-----\ndummy\n-----END PRIVATE KEY-----\n", \
-  "client_email": "dummy@example.com", \
-  "client_id": "dummy", \
-  "auth_uri": "https://accounts.google.com/o/oauth2/auth", \
-  "token_uri": "https://oauth2.googleapis.com/token", \
-  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs", \
-  "client_x509_cert_url": "dummy" \
-}' > /app/config/dummy-credentials.json
 
 # Copy the build artifact from the builder stage
 COPY --from=builder /usr/src/app/target/release/actota-api /usr/local/bin/actota-api
@@ -54,12 +39,9 @@ EXPOSE 8080
 # Set runtime environment variables
 ENV RUST_LOG=actix_web=debug,actix_http=debug
 
-# Point to our dummy credentials file to satisfy the cloud_storage crate
-ENV GOOGLE_APPLICATION_CREDENTIALS=/app/config/dummy-credentials.json
-
-# Set the same dummy credentials as SERVICE_ACCOUNT_JSON for double coverage
-# This ensures the cloud_storage crate can find credentials in either location
-ENV SERVICE_ACCOUNT_JSON="{\"type\":\"service_account\",\"project_id\":\"dummy-project\",\"private_key_id\":\"dummy\",\"private_key\":\"-----BEGIN PRIVATE KEY-----\\ndummy\\n-----END PRIVATE KEY-----\\n\",\"client_email\":\"dummy@example.com\",\"client_id\":\"dummy\",\"auth_uri\":\"https://accounts.google.com/o/oauth2/auth\",\"token_uri\":\"https://oauth2.googleapis.com/token\",\"auth_provider_x509_cert_url\":\"https://www.googleapis.com/oauth2/v1/certs\",\"client_x509_cert_url\":\"dummy\"}"
+# Set empty SERVICE_ACCOUNT_JSON to force the use of Application Default Credentials
+# This is a special flag for the cloud_storage crate
+ENV SERVICE_ACCOUNT_JSON="{}"
 
 # Run the application
 CMD ["/usr/local/bin/actota-api"]
