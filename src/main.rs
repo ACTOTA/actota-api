@@ -81,53 +81,47 @@ fn setup_credentials() {
 fn setup_credentials() {
     println!("Setting up Google Cloud credentials for production");
 
-    // Check if SERVICE_ACCOUNT is already explicitly set
-    if env::var("SERVICE_ACCOUNT").is_ok() {
-        println!("Using SERVICE_ACCOUNT from environment variable");
+    // Check if we're running in Cloud Run or a GCP environment
+    let is_cloud_run = env::var("K_SERVICE").is_ok();
+    
+    if is_cloud_run {
+        println!("Detected Cloud Run environment, using Application Default Credentials");
+        // When running in Cloud Run, we let the service use its attached service account
+        // by using Application Default Credentials (ADC)
+        
+        // For the cloud-storage crate, we need to set SERVICE_ACCOUNT_JSON to an empty object
+        // to force it to use ADC instead of looking for a file
+        if env::var("SERVICE_ACCOUNT_JSON").is_err() {
+            println!("Setting SERVICE_ACCOUNT_JSON to empty object to enable ADC");
+            env::set_var("SERVICE_ACCOUNT_JSON", "{}");
+        }
+        
+        return;
+    }
+    
+    // If we're not in Cloud Run, check if credentials are already set
+    if env::var("SERVICE_ACCOUNT").is_ok() || env::var("SERVICE_ACCOUNT_JSON").is_ok() {
+        println!("Using existing SERVICE_ACCOUNT or SERVICE_ACCOUNT_JSON environment variable");
         return;
     }
 
-    // Create a temporary credentials file
-    use std::io::Write;
-    let temp_dir = std::env::temp_dir();
-    let sa_path = temp_dir.join("gcp-credentials.json");
-
-    // Minimal valid service account JSON
-    let minimal_sa = r#"{
-        "type": "service_account",
-        "project_id": "actota",
-        "private_key_id": "temp",
-        "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7VJTUt9Us8cKj\nMzEfYyjiWA4R4/M2bS1GB4t7NXp98C3SC6dVMvDuictGeurT8jNbvJZHtCSuYEvu\nNMoSfm76oqFvAp8Gy0iz5sxjZmSnXyCdPEovGhLa0VzMaQ8s+CLOyS56YyCFGeJZ\n-----END PRIVATE KEY-----\n",
-        "client_email": "dummy@actota.iam.gserviceaccount.com",
-        "client_id": "000000000000000000000",
-        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-        "token_uri": "https://oauth2.googleapis.com/token",
-        "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-        "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/dummy%40actota.iam.gserviceaccount.com"
-    }"#;
-
-    // Write to the file
-    let mut file = std::fs::File::create(&sa_path).expect("Failed to create temp credentials file");
-    file.write_all(minimal_sa.as_bytes())
-        .expect("Failed to write credentials");
-
-    // Point SERVICE_ACCOUNT to the file path, not the JSON content
-    let path_str = sa_path.to_str().expect("Invalid path");
-    println!("Created temporary credentials at: {}", path_str);
-
-    // Set the environment variable to the FILE PATH
-    env::set_var("SERVICE_ACCOUNT", path_str);
-
-    // Also set for backward compatibility
-    env::set_var("SERVICE_ACCOUNT_JSON", path_str);
-
-    // We might also want to set GOOGLE_APPLICATION_CREDENTIALS for other libraries
-    if env::var("GOOGLE_APPLICATION_CREDENTIALS").is_err() {
-        println!("Setting GOOGLE_APPLICATION_CREDENTIALS to the temp file");
-        env::set_var("GOOGLE_APPLICATION_CREDENTIALS", path_str);
-    } else {
-        println!("Using existing GOOGLE_APPLICATION_CREDENTIALS value");
+    // Check if GOOGLE_APPLICATION_CREDENTIALS is set to a valid file
+    if let Ok(creds_path) = env::var("GOOGLE_APPLICATION_CREDENTIALS") {
+        println!("Found GOOGLE_APPLICATION_CREDENTIALS: {}", creds_path);
+        if let Ok(creds_content) = std::fs::read_to_string(&creds_path) {
+            // For cloud-storage crate compatibility, set SERVICE_ACCOUNT_JSON to content
+            env::set_var("SERVICE_ACCOUNT_JSON", creds_content);
+            println!("Set SERVICE_ACCOUNT_JSON from GOOGLE_APPLICATION_CREDENTIALS file");
+            return;
+        } else {
+            println!("Warning: Could not read GOOGLE_APPLICATION_CREDENTIALS file");
+        }
     }
+
+    // As a last resort, use a minimal working credentials object
+    // This is only for development/testing and won't have permissions
+    println!("Warning: No valid credentials found, using minimal empty credentials");
+    env::set_var("SERVICE_ACCOUNT_JSON", "{}");
 }
 
 #[actix_web::main]
