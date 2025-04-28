@@ -59,20 +59,8 @@ jobs:
           PROFILE_PIC_BUCKET: "${{ env.PROFILE_PIC_BUCKET }}"
           RUST_ENV: "${{ env.RUST_ENV }}"
           RUST_LOG: "${{ env.RUST_LOG }}"
-          # Include secrets as regular env vars temporarily
-          FACEBOOK_CLIENT_SECRET: "${{ env.FACEBOOK_CLIENT_SECRET }}"
-          GOOGLE_CLIENT_SECRET: "${{ env.GOOGLE_CLIENT_SECRET }}"
-          JWT_SECRET: "${{ env.JWT_SECRET }}"
-          MONGODB_URI: "${{ env.MONGODB_URI }}"
-          STRIPE_SECRET_KEY: "${{ env.STRIPE_SECRET_KEY }}"
-          STRIPE_WEBHOOK_SECRET: "${{ env.STRIPE_WEBHOOK_SECRET }}"
           EOF
-      - name: Clear existing env vars
-        run: |
-          gcloud run services update ${{ env.SERVICE_NAME }} \
-            --region ${{ env.REGION }} \
-            --clear-env-vars
-      - name: Deploy with new env vars
+      - name: Deploy with env vars
         run: |
           gcloud run deploy ${{ env.SERVICE_NAME }} \
             --image gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:$GITHUB_SHA \
@@ -80,6 +68,7 @@ jobs:
             --platform managed \
             --service-account=actota-api@${PROJECT_ID}.iam.gserviceaccount.com \
             --env-vars-file=env.yaml \
+            --update-secrets=FACEBOOK_CLIENT_SECRET=FACEBOOK_CLIENT_SECRET:latest,GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET:latest,JWT_SECRET=JWT_SECRET:latest,MONGODB_URI=MONGODB_URI:latest,STRIPE_SECRET_KEY=STRIPE_SECRET_KEY:latest,STRIPE_WEBHOOK_SECRET=STRIPE_WEBHOOK_SECRET:latest \
             --allow-unauthenticated
 
   deploy-prod:
@@ -114,20 +103,8 @@ jobs:
           PROFILE_PIC_BUCKET: "${{ env.PROFILE_PIC_BUCKET }}"
           RUST_ENV: "${{ env.RUST_ENV }}"
           RUST_LOG: "${{ env.RUST_LOG }}"
-          # Include secrets as regular env vars temporarily
-          FACEBOOK_CLIENT_SECRET: "${{ env.FACEBOOK_CLIENT_SECRET }}"
-          GOOGLE_CLIENT_SECRET: "${{ env.GOOGLE_CLIENT_SECRET }}"
-          JWT_SECRET: "${{ env.JWT_SECRET }}"
-          MONGODB_URI: "${{ env.MONGODB_URI }}"
-          STRIPE_SECRET_KEY: "${{ env.STRIPE_SECRET_KEY }}"
-          STRIPE_WEBHOOK_SECRET: "${{ env.STRIPE_WEBHOOK_SECRET }}"
           EOF
-      - name: Clear existing env vars
-        run: |
-          gcloud run services update ${{ env.SERVICE_NAME }} \
-            --region ${{ env.REGION }} \
-            --clear-env-vars
-      - name: Deploy with new env vars
+      - name: Deploy with env vars
         run: |
           gcloud run deploy ${{ env.SERVICE_NAME }} \
             --image gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:$GITHUB_SHA \
@@ -135,4 +112,5 @@ jobs:
             --platform managed \
             --service-account=actota-api@${PROJECT_ID}.iam.gserviceaccount.com \
             --env-vars-file=env.yaml \
+            --update-secrets=FACEBOOK_CLIENT_SECRET=FACEBOOK_CLIENT_SECRET:latest,GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET:latest,JWT_SECRET=JWT_SECRET:latest,MONGODB_URI=MONGODB_URI:latest,STRIPE_SECRET_KEY=STRIPE_SECRET_KEY:latest,STRIPE_WEBHOOK_SECRET=STRIPE_WEBHOOK_SECRET:latest \
             --allow-unauthenticated
