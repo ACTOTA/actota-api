@@ -1,12 +1,14 @@
 use actix_multipart::Multipart;
 use actix_web::{web, HttpResponse, Responder};
 use bson::{doc, oid::ObjectId};
-use cloud_storage::{Client as StorageClient, Object};
 use futures::{StreamExt, TryStreamExt};
 use mongodb::Client;
 use std::{env, str::FromStr, sync::Arc};
 
-use crate::{middleware::auth::Claims, models::account::{PersonalInformation, User}};
+use crate::{
+    middleware::auth::Claims,
+    models::account::{PersonalInformation, User},
+};
 
 pub async fn update_personal_information(
     data: web::Data<Arc<Client>>,
@@ -42,10 +44,10 @@ pub async fn update_personal_information(
         user.email = email;
     }
     if let Some(password) = personal_info.password {
-        user.password = bcrypt::hash(&password, bcrypt::DEFAULT_COST)
-            .unwrap_or(user.password.clone());
+        user.password =
+            bcrypt::hash(&password, bcrypt::DEFAULT_COST).unwrap_or(user.password.clone());
     }
-    if let Some(first_name  ) = personal_info.first_name {
+    if let Some(first_name) = personal_info.first_name {
         user.first_name = Some(first_name);
     }
     if let Some(last_name) = personal_info.last_name {
@@ -69,9 +71,7 @@ pub async fn update_personal_information(
         Ok(result) if result.modified_count > 0 => {
             return HttpResponse::Ok().body("User information updated");
         }
-        Ok(_) => {
-            HttpResponse::NotModified().body("No changes applied")
-        }
+        Ok(_) => HttpResponse::NotModified().body("No changes applied"),
         Err(_) => {
             return HttpResponse::InternalServerError().body("Failed to update user information")
         }

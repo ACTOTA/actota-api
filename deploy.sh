@@ -41,7 +41,6 @@ gcloud run deploy ${SERVICE_NAME} \
   --set-env-vars="FACEBOOK_CLIENT_ID=536393542826375" \
   --set-env-vars="FACEBOOK_REDIRECT_URI=https://actota-api-324035621794.us-central1.run.app/api/auth/facebook/callback" \
   --set-env-vars="FRONTEND_URL=https://actota-frontend-324035621794.us-central1.run.app" \
-  # Removed GOOGLE_APPLICATION_CREDENTIALS as we're using ADC \
   --service-account actota-api@${PROJECT_ID}.iam.gserviceaccount.com \
   --allow-unauthenticated \
   --cpu=1 \
