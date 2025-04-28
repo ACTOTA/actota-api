@@ -55,21 +55,21 @@ jobs:
             --region ${{ env.REGION }} \
             --platform managed \
             --service-account=actota-api@${PROJECT_ID}.iam.gserviceaccount.com \
-            --set-env-vars="FACEBOOK_CLIENT_ID=${{ env.FACEBOOK_CLIENT_ID }},\
-            FACEBOOK_CLIENT_SECRET=${{ env.FACEBOOK_CLIENT_SECRET }},\
-            GOOGLE_CLIENT_ID=${{ env.GOOGLE_CLIENT_ID }},\
-            GOOGLE_CLIENT_SECRET=${{ env.GOOGLE_CLIENT_SECRET }},\
-            JWT_SECRET=${{ env.JWT_SECRET }},\
-            MONGODB_URI=${{ env.MONGODB_URI }},\
-            STRIPE_SECRET_KEY=${{ env.STRIPE_SECRET_KEY }},\
-            STRIPE_WEBHOOK_SECRET=${{ env.STRIPE_WEBHOOK_SECRET }},\
-            CLOUD_STORAGE_URL=${{ env.CLOUD_STORAGE_URL }},\
-            FACEBOOK_REDIRECT_URI=${{ env.FACEBOOK_REDIRECT_URI }},\
-            GOOGLE_REDIRECT_URI=${{ env.GOOGLE_REDIRECT_URI }},\
-            FRONTEND_URL=${{ env.FRONTEND_URL }},\
-            ITINERARY_BUCKET=${{ env.ITINERARY_BUCKET }},\
-            PROFILE_PIC_BUCKET=${{ env.PROFILE_PIC_BUCKET }},\
-            SERVICE_ACCOUNT_JSON={\"_\":\"_\"}" \
+            --update-env-vars FACEBOOK_CLIENT_ID="${{ env.FACEBOOK_CLIENT_ID }}" \
+            --update-env-vars FACEBOOK_CLIENT_SECRET="${{ env.FACEBOOK_CLIENT_SECRET }}" \
+            --update-env-vars GOOGLE_CLIENT_ID="${{ env.GOOGLE_CLIENT_ID }}" \
+            --update-env-vars GOOGLE_CLIENT_SECRET="${{ env.GOOGLE_CLIENT_SECRET }}" \
+            --update-env-vars JWT_SECRET="${{ env.JWT_SECRET }}" \
+            --update-env-vars MONGODB_URI="${{ env.MONGODB_URI }}" \
+            --update-env-vars STRIPE_SECRET_KEY="${{ env.STRIPE_SECRET_KEY }}" \
+            --update-env-vars STRIPE_WEBHOOK_SECRET="${{ env.STRIPE_WEBHOOK_SECRET }}" \
+            --update-env-vars CLOUD_STORAGE_URL="${{ env.CLOUD_STORAGE_URL }}" \
+            --update-env-vars FACEBOOK_REDIRECT_URI="${{ env.FACEBOOK_REDIRECT_URI }}" \
+            --update-env-vars GOOGLE_REDIRECT_URI="${{ env.GOOGLE_REDIRECT_URI }}" \
+            --update-env-vars FRONTEND_URL="${{ env.FRONTEND_URL }}" \
+            --update-env-vars ITINERARY_BUCKET="${{ env.ITINERARY_BUCKET }}" \
+            --update-env-vars PROFILE_PIC_BUCKET="${{ env.PROFILE_PIC_BUCKET }}" \
+            --update-env-vars SERVICE_ACCOUNT_JSON="{\"_\":\"_\"}" \
             --allow-unauthenticated
   deploy-prod:
     if: github.ref == 'refs/heads/main'
@@ -98,19 +98,19 @@ jobs:
             --region ${{ env.REGION }} \
             --platform managed \
             --service-account=actota-api@${PROJECT_ID}.iam.gserviceaccount.com \
-            --set-env-vars="FACEBOOK_CLIENT_ID=${{ env.FACEBOOK_CLIENT_ID }},\
-            FACEBOOK_CLIENT_SECRET=${{ env.FACEBOOK_CLIENT_SECRET }},\
-            GOOGLE_CLIENT_ID=${{ env.GOOGLE_CLIENT_ID }},\
-            GOOGLE_CLIENT_SECRET=${{ env.GOOGLE_CLIENT_SECRET }},\
-            JWT_SECRET=${{ env.JWT_SECRET }},\
-            MONGODB_URI=${{ env.MONGODB_URI }},\
-            STRIPE_SECRET_KEY=${{ env.STRIPE_SECRET_KEY }},\
-            STRIPE_WEBHOOK_SECRET=${{ env.STRIPE_WEBHOOK_SECRET }},\
-            CLOUD_STORAGE_URL=${{ env.CLOUD_STORAGE_URL }},\
-            FACEBOOK_REDIRECT_URI=${{ env.FACEBOOK_REDIRECT_URI }},\
-            GOOGLE_REDIRECT_URI=${{ env.GOOGLE_REDIRECT_URI }},\
-            FRONTEND_URL=${{ env.FRONTEND_URL }},\
-            ITINERARY_BUCKET=${{ env.ITINERARY_BUCKET }},\
-            PROFILE_PIC_BUCKET=${{ env.PROFILE_PIC_BUCKET }},\
-            SERVICE_ACCOUNT_JSON={\"_\":\"_\"}" \
+            --update-env-vars FACEBOOK_CLIENT_ID="${{ env.FACEBOOK_CLIENT_ID }}" \
+            --update-env-vars FACEBOOK_CLIENT_SECRET="${{ env.FACEBOOK_CLIENT_SECRET }}" \
+            --update-env-vars GOOGLE_CLIENT_ID="${{ env.GOOGLE_CLIENT_ID }}" \
+            --update-env-vars GOOGLE_CLIENT_SECRET="${{ env.GOOGLE_CLIENT_SECRET }}" \
+            --update-env-vars JWT_SECRET="${{ env.JWT_SECRET }}" \
+            --update-env-vars MONGODB_URI="${{ env.MONGODB_URI }}" \
+            --update-env-vars STRIPE_SECRET_KEY="${{ env.STRIPE_SECRET_KEY }}" \
+            --update-env-vars STRIPE_WEBHOOK_SECRET="${{ env.STRIPE_WEBHOOK_SECRET }}" \
+            --update-env-vars CLOUD_STORAGE_URL="${{ env.CLOUD_STORAGE_URL }}" \
+            --update-env-vars FACEBOOK_REDIRECT_URI="${{ env.FACEBOOK_REDIRECT_URI }}" \
+            --update-env-vars GOOGLE_REDIRECT_URI="${{ env.GOOGLE_REDIRECT_URI }}" \
+            --update-env-vars FRONTEND_URL="${{ env.FRONTEND_URL }}" \
+            --update-env-vars ITINERARY_BUCKET="${{ env.ITINERARY_BUCKET }}" \
+            --update-env-vars PROFILE_PIC_BUCKET="${{ env.PROFILE_PIC_BUCKET }}" \
+            --update-env-vars SERVICE_ACCOUNT_JSON="{\"_\":\"_\"}" \
             --allow-unauthenticated
