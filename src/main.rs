@@ -77,20 +77,38 @@ fn setup_credentials() {
     }
 }
 
-// For Cloud Run and other production environments
+// For Google Cloud Run deployment
 #[cfg(not(debug_assertions))]
 fn setup_credentials() {
-    println!("Setting up Google Cloud credentials for production");
+    println!("Setting up Google Cloud credentials for cloud deployment");
 
     // Check if SERVICE_ACCOUNT_JSON is already explicitly set
     if env::var("SERVICE_ACCOUNT_JSON").is_ok() {
         println!("Using SERVICE_ACCOUNT_JSON from environment variable");
         return;
     }
-    println!("No explicit SERVICE_ACCOUNT_JSON found. Configuring for ADC...");
 
-    env::set_var("SERVICE_ACCOUNT_JSON", "{\"_\":\"_\"}");
+    // Don't set a placeholder for SERVICE_ACCOUNT_JSON
+    // Instead, create a temporary credentials file for cloud-storage
+    println!("Creating temporary default credentials for cloud-storage");
 
+    // Option 1: Create minimal valid service account JSON
+    let minimal_sa = r#"{
+        "type": "service_account",
+        "project_id": "actota",
+        "private_key_id": "",
+        "private_key": "",
+        "client_email": "actota-api@actota.iam.gserviceaccount.com",
+        "client_id": "",
+        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+        "token_uri": "https://oauth2.googleapis.com/token",
+        "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+        "client_x509_cert_url": ""
+    }"#;
+
+    env::set_var("SERVICE_ACCOUNT_JSON", minimal_sa);
+
+    // Rest of your code remains the same
     if env::var("GOOGLE_APPLICATION_CREDENTIALS").is_err() {
         println!("Setting GOOGLE_APPLICATION_CREDENTIALS to 'use-adc'");
         env::set_var("GOOGLE_APPLICATION_CREDENTIALS", "use-adc");
