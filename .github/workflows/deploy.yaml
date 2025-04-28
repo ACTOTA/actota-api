@@ -59,7 +59,6 @@ jobs:
           PROFILE_PIC_BUCKET: "${{ env.PROFILE_PIC_BUCKET }}"
           RUST_ENV: "${{ env.RUST_ENV }}"
           RUST_LOG: "${{ env.RUST_LOG }}"
-          SERVICE_ACCOUNT_JSON: "{\"_\":\"_\"}"
           # Include secrets as regular env vars temporarily
           FACEBOOK_CLIENT_SECRET: "${{ env.FACEBOOK_CLIENT_SECRET }}"
           GOOGLE_CLIENT_SECRET: "${{ env.GOOGLE_CLIENT_SECRET }}"
@@ -115,7 +114,6 @@ jobs:
           PROFILE_PIC_BUCKET: "${{ env.PROFILE_PIC_BUCKET }}"
           RUST_ENV: "${{ env.RUST_ENV }}"
           RUST_LOG: "${{ env.RUST_LOG }}"
-          SERVICE_ACCOUNT_JSON: "{\"_\":\"_\"}"
           # Include secrets as regular env vars temporarily
           FACEBOOK_CLIENT_SECRET: "${{ env.FACEBOOK_CLIENT_SECRET }}"
           GOOGLE_CLIENT_SECRET: "${{ env.GOOGLE_CLIENT_SECRET }}"
