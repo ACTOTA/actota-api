@@ -58,7 +58,7 @@ pub struct Location {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Days {
-    days: HashMap<String, Vec<Day>>,
+    pub days: HashMap<String, Vec<Day>>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]

@@ -1,4 +1,5 @@
 use crate::models::itinerary::FeaturedVacation;
+use bson::datetime::Error;
 use futures::future::join_all;
 use google_cloud_storage::client::{Client, ClientConfig};
 use google_cloud_storage::http::objects::list::ListObjectsRequest;
@@ -56,7 +57,7 @@ pub async fn get_images(mut vacations: Vec<FeaturedVacation>) -> Vec<FeaturedVac
 
             // Create list request with bucket name and prefix
             let list_request = ListObjectsRequest {
-                bucket: bucket_name.clone(), // Include bucket name here
+                bucket: bucket_name.clone(),
                 prefix: Some(vacation_id.clone()),
                 ..Default::default()
             };
@@ -66,18 +67,27 @@ pub async fn get_images(mut vacations: Vec<FeaturedVacation>) -> Vec<FeaturedVac
             // List objects in the bucket with the prefix
             match storage_client.list_objects(&list_request).await {
                 Ok(response) => {
-                    for item in response.items.unwrap_or_default() {
+                    let items = response.items.unwrap_or_default();
+                    println!(
+                        "Found {} potential image items for vacation ID: {}",
+                        items.len(),
+                        vacation_id
+                    );
+
+                    for item in items {
                         let name = &item.name;
 
                         if name.ends_with(".jpg") || name.ends_with(".png") {
                             let url = format!("{}/{}/{}", base_url, bucket_name, name);
                             println!("Found image: {}", url);
                             files.push(url);
+                        } else {
+                            println!("Skipping non-image item: {}", name);
                         }
                     }
 
                     vacation.images = Some(files);
-                    Ok(vacation.clone())
+                    Result::<FeaturedVacation, Error>::Ok(vacation.clone())
                 }
                 Err(e) => {
                     println!(
@@ -93,23 +103,26 @@ pub async fn get_images(mut vacations: Vec<FeaturedVacation>) -> Vec<FeaturedVac
         .collect();
 
     // Execute all futures concurrently
-    let results = join_all(futures).await;
+    let results: Vec<Result<FeaturedVacation, _>> = join_all(futures).await;
 
     // Process results and handle any errors
-    let processed_vacations = results
-        .into_iter()
-        .filter_map(
-            |r: Result<FeaturedVacation, google_cloud_storage::http::Error>| {
-                if let Err(e) = &r {
-                    println!("Error processing vacation images: {:?}", e);
-                }
-                r.ok()
-            },
-        )
-        .collect::<Vec<FeaturedVacation>>();
+    let mut processed_vacations = Vec::new();
+
+    for (i, result) in results.into_iter().enumerate() {
+        match result {
+            Ok(vacation) => {
+                processed_vacations.push(vacation);
+            }
+            Err(e) => {
+                println!("Error processing vacation #{} images: {:?}", i + 1, e);
+                // Don't filter out vacations with errors, but we can't recover them here
+                // They will be handled in the calling function
+            }
+        }
+    }
 
     println!(
-        "Processed {} vacations with images",
+        "Processed {} vacations with images (there may be errors)",
         processed_vacations.len()
     );
     processed_vacations
