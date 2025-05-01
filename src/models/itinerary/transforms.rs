@@ -1,3 +1,5 @@
+use crate::models::itinerary::populated::{Address, Capacity};
+
 use super::{
     base::{DayItem, FeaturedVacation},
     populated::{AccommodationModel, ActivityModel, PopulatedDayItem, PopulatedFeaturedVacation},
@@ -101,10 +103,45 @@ impl FeaturedVacation {
                                 activity: activity.clone(),
                             }
                         } else {
-                            return Err(Error::custom(format!(
-                                "Activity not found: {}",
+                            // Create a placeholder activity instead of failing
+                            println!(
+                                "Warning: Activity not found: {}, creating placeholder",
                                 activity_id
-                            )));
+                            );
+                            PopulatedDayItem::Activity {
+                                time,
+                                activity: ActivityModel {
+                                    id: Some(activity_id),
+                                    company: "Unknown Company".to_string(),
+                                    company_id: "unknown".to_string(),
+                                    booking_link: "#".to_string(),
+                                    online_booking_status: "unavailable".to_string(),
+                                    title: format!("Unknown Activity (ID: {})", activity_id),
+                                    description: "This activity information could not be found"
+                                        .to_string(),
+                                    activity_types: vec!["unknown".to_string()],
+                                    tags: vec![],
+                                    price_per_person: 0,
+                                    duration_minutes: 60,
+                                    daily_time_slots: vec![],
+                                    address: Address {
+                                        street: "Unknown".to_string(),
+                                        unit: None,
+                                        city: "Unknown".to_string(),
+                                        state: "Unknown".to_string(),
+                                        zip: "00000".to_string(),
+                                        country: "Unknown".to_string(),
+                                    },
+                                    whats_included: vec![],
+                                    weight_limit_lbs: None,
+                                    age_requirement: None,
+                                    height_requirement: None,
+                                    capacity: Capacity {
+                                        minimum: 1,
+                                        maximum: 10,
+                                    },
+                                },
+                            }
                         }
                     }
 
@@ -119,10 +156,28 @@ impl FeaturedVacation {
                                 accommodation: accommodation.clone(),
                             }
                         } else {
-                            return Err(Error::custom(format!(
-                                "Accommodation not found: {}",
+                            // Create a placeholder accommodation instead of failing
+                            println!(
+                                "Warning: Accommodation not found: {}, creating placeholder",
                                 accommodation_id
-                            )));
+                            );
+                            PopulatedDayItem::Accommodation {
+                                time,
+                                accommodation: AccommodationModel {
+                                    id: Some(accommodation_id),
+                                    name: format!(
+                                        "Unknown Accommodation (ID: {})",
+                                        accommodation_id
+                                    ),
+                                    address: Some("Address information unavailable".to_string()),
+                                    location: None,
+                                    price_per_night: None,
+                                    amenities: Some(vec!["Information unavailable".to_string()]),
+                                    images: None,
+                                    created_at: Some(chrono::Utc::now()),
+                                    updated_at: Some(chrono::Utc::now()),
+                                },
+                            }
                         }
                     }
                 };
