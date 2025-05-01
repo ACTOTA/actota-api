@@ -52,6 +52,7 @@ pub struct ActivityModel {
     pub capacity: Capacity,
     // For the frontend
     pub activities: Option<Vec<ActivitySummary>>,
+    pub images: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
