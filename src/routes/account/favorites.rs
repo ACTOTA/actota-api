@@ -131,6 +131,8 @@ pub async fn get_favorites(
                         .map(|favorite| favorite.itinerary_id.clone())
                         .collect();
 
+                    println!("\n\n Itinerary IDs: {:?}", itinerary_ids);
+
                     // Fetch itineraries from Itineraries.Featured collection
                     let itineraries_collection: mongodb::Collection<FeaturedVacation> =
                         client.database("Itineraries").collection("Featured");

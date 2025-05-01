@@ -1,4 +1,4 @@
-use crate::models::itinerary::populated::{Address, Capacity};
+use crate::models::itinerary::populated::{ActivitySummary, Address, Capacity};
 
 use super::{
     base::{DayItem, FeaturedVacation},
@@ -79,6 +79,7 @@ impl FeaturedVacation {
 
         // 4. Populate days with fetched data
         let mut populated_days = HashMap::new();
+        let mut activities = Vec::new();
 
         for (day_key, day_items) in self.clone().days.days {
             let mut populated_items = Vec::new();
@@ -98,8 +99,14 @@ impl FeaturedVacation {
                     DayItem::Activity { time, activity_id } => {
                         // Get activity or create a placeholder if not found
                         if let Some(activity) = activities_map.get(&activity_id) {
+                            activities.push(ActivitySummary {
+                                time,
+                                label: activity.title.clone(),
+                                tags: activity.tags.clone(),
+                            });
                             PopulatedDayItem::Activity {
                                 time,
+                                activity_id: Some(activity_id), // Include the activity_id for backward compatibility
                                 activity: activity.clone(),
                             }
                         } else {
@@ -110,6 +117,7 @@ impl FeaturedVacation {
                             );
                             PopulatedDayItem::Activity {
                                 time,
+                                activity_id: Some(activity_id), // Include the activity_id for backward compatibility
                                 activity: ActivityModel {
                                     id: Some(activity_id),
                                     company: "Unknown Company".to_string(),
@@ -140,6 +148,7 @@ impl FeaturedVacation {
                                         minimum: 1,
                                         maximum: 10,
                                     },
+                                    activities: None,
                                 },
                             }
                         }
@@ -192,6 +201,7 @@ impl FeaturedVacation {
         Ok(PopulatedFeaturedVacation {
             base: self,
             populated_days,
+            activities,
         })
     }
 }
