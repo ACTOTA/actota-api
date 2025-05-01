@@ -1,9 +1,7 @@
-use crate::models::search::SearchItinerary;
+use crate::models::itinerary::base::{Activity, ItinerarySubmission};
+use crate::models::{itinerary::base::FeaturedVacation, search::SearchItinerary};
 use crate::services::itinerary_search_service::search_itineraries;
-use crate::{
-    models::itinerary::{Activity, FeaturedVacation},
-    services::itinerary_service::get_images,
-};
+use crate::services::itinerary_service::get_images;
 use actix_web::{web, HttpResponse, Responder};
 use bson::doc;
 use futures::TryStreamExt;
@@ -29,7 +27,15 @@ pub async fn get_by_id(path: web::Path<String>, data: web::Data<Arc<Client>>) ->
     match collection.find_one(filter).await {
         Ok(Some(doc)) => {
             let processed_doc = get_images(vec![doc.clone()]).await;
-            HttpResponse::Ok().json(processed_doc[0].clone())
+
+            // Add await here to resolve the future
+            match processed_doc[0].clone().populate(&client).await {
+                Ok(populated) => HttpResponse::Ok().json(populated),
+                Err(err) => {
+                    eprintln!("Failed to populate data: {:?}", err);
+                    HttpResponse::InternalServerError().body("Failed to populate itinerary data")
+                }
+            }
         }
         Ok(None) => HttpResponse::NotFound().body("Itinerary not found"),
         Err(err) => {
@@ -75,9 +81,8 @@ pub async fn get_all(
 
         // Log the search query to the Travelers.Submission collection
         let search_query = search_params.clone();
-        let submission_collection: mongodb::Collection<
-            crate::models::itinerary::ItinerarySubmission,
-        > = client.database("Travelers").collection("Submission");
+        let submission_collection: mongodb::Collection<ItinerarySubmission> =
+            client.database("Travelers").collection("Submission");
 
         // Convert SearchItinerary to ItinerarySubmission for logging
         // Only attempt this if we have enough data to make a meaningful log
@@ -87,7 +92,7 @@ pub async fn get_all(
             .map_or(false, |locs| !locs.is_empty())
         {
             // Create a minimal submission record from the search parameters
-            let search_log = crate::models::itinerary::ItinerarySubmission {
+            let search_log = ItinerarySubmission {
                 id: None,
                 user_id: None, // Anonymous search
                 location_start: search_query

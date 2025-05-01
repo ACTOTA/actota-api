@@ -1,9 +1,10 @@
-use crate::models::itinerary::FeaturedVacation;
 use bson::datetime::Error;
 use futures::future::join_all;
 use google_cloud_storage::client::{Client, ClientConfig};
 use google_cloud_storage::http::objects::list::ListObjectsRequest;
 use std::env;
+
+use crate::models::itinerary::base::FeaturedVacation;
 
 // Create a storage client with automatic authentication
 async fn create_storage_client() -> Client {

@@ -1,4 +1,4 @@
-use crate::models::{itinerary::FeaturedVacation, search::SearchItinerary};
+use crate::models::{itinerary::base::FeaturedVacation, search::SearchItinerary};
 use bson::{doc, Document};
 use futures::TryStreamExt;
 use mongodb::{Client, Collection};

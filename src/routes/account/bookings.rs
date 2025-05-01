@@ -1,7 +1,6 @@
 use crate::{
     middleware::auth::Claims,
-    models::{bookings::Booking, itinerary::FeaturedVacation},
-    services::itinerary_service::get_images,
+    models::{bookings::Booking, itinerary::base::FeaturedVacation},
 };
 use actix_web::{web, HttpResponse, Responder};
 use bson::{doc, oid::ObjectId};
@@ -153,14 +152,12 @@ pub async fn get_all_bookings(
     let filter = doc! {
         "user_id": ObjectId::parse_str(&claims.user_id).unwrap()
     };
-    
+
     match collection.find(filter).await {
         Ok(cursor) => {
             let results = cursor.try_collect::<Vec<Booking>>().await;
             match results {
-                Ok(bookings) => {
-                    return HttpResponse::Ok().json(bookings)
-                }
+                Ok(bookings) => return HttpResponse::Ok().json(bookings),
                 Err(err) => {
                     eprintln!("Error retrieving booking: {:?}", err);
                     HttpResponse::InternalServerError().body("Failed to retrieve booking")
@@ -248,4 +245,3 @@ pub async fn get_all_bookings(
 //         }
 //     }
 // }
-
