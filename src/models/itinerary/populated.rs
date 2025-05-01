@@ -50,6 +50,15 @@ pub struct ActivityModel {
     pub height_requirement: Option<u32>,
     // pub blackout_date_ranges: Option<Vec<String>>, // Update later
     pub capacity: Capacity,
+    // For the frontend
+    pub activities: Option<Vec<ActivitySummary>>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct ActivitySummary {
+    pub time: NaiveTime,
+    pub label: String,
+    pub tags: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -80,6 +89,8 @@ pub enum PopulatedDayItem {
     #[serde(rename = "activity")]
     Activity {
         time: NaiveTime,
+        // Keep activity_id for backward compatibility with existing database records
+        activity_id: Option<ObjectId>,
         #[serde(flatten)]
         activity: ActivityModel,
     },
@@ -98,6 +109,7 @@ pub struct PopulatedFeaturedVacation {
     // Reuse the original struct rather than duplicating all fields
     pub base: FeaturedVacation,
     pub populated_days: HashMap<String, Vec<PopulatedDayItem>>,
+    pub activities: Vec<ActivitySummary>,
 }
 
 // Custom serialization to handle the composition
@@ -138,10 +150,12 @@ impl PopulatedFeaturedVacation {
     pub fn from_base(
         base: FeaturedVacation,
         populated_days: HashMap<String, Vec<PopulatedDayItem>>,
+        activities: Vec<ActivitySummary>,
     ) -> Self {
         Self {
             base,
             populated_days,
+            activities,
         }
     }
     pub fn id(&self) -> Option<ObjectId> {
