@@ -1,6 +1,6 @@
 use crate::{
     middleware::auth::Claims,
-    models::{account::Favorite, itinerary::FeaturedVacation},
+    models::{account::Favorite, itinerary::base::FeaturedVacation},
     services::itinerary_service::get_images,
 };
 use actix_web::{web, HttpResponse, Responder};

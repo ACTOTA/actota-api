@@ -67,13 +67,15 @@ fn setup_credentials() {
 
     // Check if we're running in Cloud Run
     let is_cloud_run = env::var("K_SERVICE").is_ok();
-    
+
     if is_cloud_run {
         println!("Detected Cloud Run environment - using Application Default Credentials");
-        // When running in Cloud Run, the google-cloud-storage crate 
+        // When running in Cloud Run, the google-cloud-storage crate
         // will automatically use the service account attached to the service
     } else {
-        println!("Not running in Cloud Run - will try to use local Application Default Credentials");
+        println!(
+            "Not running in Cloud Run - will try to use local Application Default Credentials"
+        );
     }
 }
 

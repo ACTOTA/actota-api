@@ -8,8 +8,8 @@ use super::base::{FeaturedVacation, ItemLocation};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct TimeSlot {
-    pub start: String,
-    pub end: String,
+    pub start: NaiveTime,
+    pub end: NaiveTime,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -24,8 +24,8 @@ pub struct Address {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Capacity {
-    pub minimum: i32,
-    pub maximum: i32,
+    pub minimum: u32,
+    pub maximum: u32,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -33,22 +33,22 @@ pub struct ActivityModel {
     #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
     pub id: Option<ObjectId>,
     pub company: String,
-    pub company_id: String,
+    pub company_id: String, // The ID for the booking platform, NOT an ObjectId in MongoDB
     pub booking_link: String,
     pub online_booking_status: String,
     pub title: String,
     pub description: String,
     pub activity_types: Vec<String>,
     pub tags: Vec<String>,
-    pub price_per_person: i32,
-    pub duration_minutes: i32,
+    pub price_per_person: u32,
+    pub duration_minutes: u32,
     pub daily_time_slots: Vec<TimeSlot>,
     pub address: Address,
     pub whats_included: Vec<String>,
-    pub weight_limit_lbs: Option<i32>,
-    pub age_requirement: Option<i32>,
-    pub height_requirement: Option<i32>,
-    pub blackout_date_ranges: Vec<String>, // Update later
+    pub weight_limit_lbs: Option<u32>,
+    pub age_requirement: Option<u32>,
+    pub height_requirement: Option<u32>,
+    // pub blackout_date_ranges: Option<Vec<String>>, // Update later
     pub capacity: Capacity,
 }
 
