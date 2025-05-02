@@ -52,6 +52,7 @@ pub struct ActivityModel {
     pub capacity: Capacity,
     // For the frontend
     pub activities: Option<Vec<ActivitySummary>>,
+    pub primary_image: Option<String>,
     pub images: Option<Vec<String>>,
 }
 
@@ -71,6 +72,7 @@ pub struct AccommodationModel {
     pub location: Option<ItemLocation>,
     pub price_per_night: Option<f32>,
     pub amenities: Option<Vec<String>>,
+    pub primary_image: Option<String>,
     pub images: Option<Vec<String>>,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
