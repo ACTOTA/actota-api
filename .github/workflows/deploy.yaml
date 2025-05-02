@@ -24,6 +24,7 @@ env:
   FRONTEND_URL: ${{vars.FRONTEND_URL}}
   ITINERARY_BUCKET: ${{vars.ITINERARY_BUCKET}}
   PROFILE_PIC_BUCKET: ${{vars.PROFILE_PIC_BUCKET}}
+  ACTIVITY_BUCKET: ${{vars.ACTIVITY_BUCKET}}
   RUST_LOG: ${{vars.RUST_LOG}}
 jobs:
   deploy-uat:
@@ -59,6 +60,7 @@ jobs:
           PROFILE_PIC_BUCKET: "${{ env.PROFILE_PIC_BUCKET }}"
           RUST_ENV: "${{ env.RUST_ENV }}"
           RUST_LOG: "${{ env.RUST_LOG }}"
+          ACTIVITY_BUCKET: "${{ env.ACTIVITY_BUCKET }}"
           EOF
       - name: Deploy with env vars
         run: |
@@ -103,6 +105,7 @@ jobs:
           PROFILE_PIC_BUCKET: "${{ env.PROFILE_PIC_BUCKET }}"
           RUST_ENV: "${{ env.RUST_ENV }}"
           RUST_LOG: "${{ env.RUST_LOG }}"
+          ACTIVITY_BUCKET: "${{ env.ACTIVITY_BUCKET }}"
           EOF
       - name: Deploy with env vars
         run: |
