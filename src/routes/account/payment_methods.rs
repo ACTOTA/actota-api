@@ -31,7 +31,7 @@ pub struct AttachPaymentMethod {
 #[derive(Serialize, Deserialize)]
 pub struct DetachPaymentMethod {
     customer_id: String,
-    payment_id: String,
+    payment_method_id: String,
 }
 
 // Check for customer_id
@@ -304,35 +304,53 @@ pub async fn remove_payment_method(
     }
 }
 
-// pub async fn attach_payment_method(input: web::Json<AttachPaymentMethod>) -> impl Responder {
-//     let stripe_op = StripeProvider::new(std::env::var("STRIPE_SECRET_KEY").unwrap());
-//     let customer_id = &input.customer_id;
-//     let payment_id = &input.payment_id;
-//     let _default = input.default;
-//
-//     match stripe_op
-//         .attach_payment_method(customer_id.to_string(), payment_id.to_string())
-//         .await
-//     {
-//         Ok(res) => return res,
-//         Err(_) => {
-//             return HttpResponse::InternalServerError().body("Failed to attach payment method")
-//         }
-//     }
-// }
+pub async fn attach_payment_method(
+    input: web::Json<AttachPaymentMethod>,
+    claims: Claims,
+    path: web::Path<String>,
+) -> impl Responder {
+    let user_id = path.into_inner();
+    if user_id != claims.user_id {
+        return HttpResponse::Forbidden().body("Forbidden");
+    }
 
-// pub async fn detach_payment_method(input: web::Json<DetachPaymentMethod>) -> impl Responder {
-//     let stripe_op = StripeProvider::new(std::env::var("STRIPE_SECRET_KEY").unwrap());
-//     let customer_id = &input.customer_id;
-//     let payment_id = &input.payment_id;
-//
-//     match stripe_op
-//         .detach_payment_method(customer_id.to_string(), payment_id.to_string())
-//         .await
-//     {
-//         Ok(res) => return res,
-//         Err(_) => {
-//             return HttpResponse::InternalServerError().body("Failed to detach payment method")
-//         }
-//     }
-// }
+    let stripe_op = StripeProvider::new(std::env::var("STRIPE_SECRET_KEY").unwrap());
+    let customer_id = &input.customer_id;
+    let payment_id = &input.payment_id;
+    let _default = input.default;
+
+    match stripe_op
+        .attach_payment_method(customer_id.to_string(), payment_id.to_string())
+        .await
+    {
+        Ok(res) => return res,
+        Err(_) => {
+            return HttpResponse::InternalServerError().body("Failed to attach payment method")
+        }
+    }
+}
+
+pub async fn detach_payment_method(
+    input: web::Json<DetachPaymentMethod>,
+    claims: Claims,
+    path: web::Path<String>,
+) -> impl Responder {
+    let user_id = path.into_inner();
+    if user_id != claims.user_id {
+        return HttpResponse::Forbidden().body("Forbidden");
+    }
+
+    let stripe_op = StripeProvider::new(std::env::var("STRIPE_SECRET_KEY").unwrap());
+    let customer_id = &input.customer_id;
+    let payment_method_id = &input.payment_method_id;
+
+    match stripe_op
+        .detach_payment_method(customer_id.to_string(), payment_method_id.to_string())
+        .await
+    {
+        Ok(res) => return res,
+        Err(_) => {
+            return HttpResponse::InternalServerError().body("Failed to detach payment method")
+        }
+    }
+}

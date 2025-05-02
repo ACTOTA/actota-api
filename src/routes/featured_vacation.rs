@@ -1,4 +1,4 @@
-use crate::{models::itinerary::FeaturedVacation, services::itinerary_service::get_images};
+use crate::{models::itinerary::base::FeaturedVacation, services::itinerary_service::get_images};
 use actix_web::{web, HttpResponse, Responder};
 use bson::doc;
 use chrono::Utc;

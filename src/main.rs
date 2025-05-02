@@ -67,13 +67,15 @@ fn setup_credentials() {
 
     // Check if we're running in Cloud Run
     let is_cloud_run = env::var("K_SERVICE").is_ok();
-    
+
     if is_cloud_run {
         println!("Detected Cloud Run environment - using Application Default Credentials");
-        // When running in Cloud Run, the google-cloud-storage crate 
+        // When running in Cloud Run, the google-cloud-storage crate
         // will automatically use the service account attached to the service
     } else {
-        println!("Not running in Cloud Run - will try to use local Application Default Credentials");
+        println!(
+            "Not running in Cloud Run - will try to use local Application Default Credentials"
+        );
     }
 }
 
@@ -273,16 +275,17 @@ async fn main() -> std::io::Result<()> {
                                 "/{id}/payment-methods/{pm_id}",
                                 web::delete()
                                     .to(routes::account::payment_methods::remove_payment_method),
-                            ), // .route(
-                               //     "/{id}/attach-payment-method",
-                               //     web::post()
-                               //         .to(routes::account::payment_methods::attach_payment_method),
-                               // )
-                               // .route(
-                               //     "/{id}/detach-payment-method",
-                               //     web::post()
-                               //         .to(routes::account::payment_methods::detach_payment_method),
-                               // ),
+                            )
+                            .route(
+                                "/{id}/payment-methods/attach",
+                                web::post()
+                                    .to(routes::account::payment_methods::attach_payment_method),
+                            )
+                            .route(
+                                "/{id}/payment-methods/detach",
+                                web::post() // Using post to send data in body
+                                    .to(routes::account::payment_methods::detach_payment_method),
+                            ),
                     )
                     .service(
                         web::scope("")
