@@ -4,6 +4,23 @@ use chrono::{DateTime, NaiveTime, Utc};
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub enum DayItemType {
+    #[serde(rename = "transportation")]
+    Transportation,
+    #[serde(rename = "activity")]
+    Activity,
+    #[serde(rename = "accomodation")]
+    Accomodation,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct Activity {
+    pub label: String,
+    pub description: String,
+    pub tags: Vec<String>,
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ItinerarySubmission {
     #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
@@ -43,7 +60,6 @@ pub struct FeaturedVacation {
     pub description: String,
     #[serde(flatten)]
     pub days: Days,
-    pub activities: Option<Vec<Activity>>,
     pub images: Option<Vec<String>>,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
@@ -58,27 +74,34 @@ pub struct Location {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Days {
-    pub days: HashMap<String, Vec<Day>>,
+    pub days: HashMap<String, Vec<DayItem>>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct Day {
-    time: NaiveTime,
-    location: ActivityLocation,
-    name: String,
-    #[serde(rename = "type")]
-    item_type: Option<String>,
+#[serde(tag = "type")] // Use the "type" field to determine which variant to use
+pub enum DayItem {
+    #[serde(rename = "transportation")]
+    Transportation {
+        time: NaiveTime,
+        location: ItemLocation,
+        name: String,
+    },
+
+    #[serde(rename = "activity")]
+    Activity {
+        time: NaiveTime,
+        activity_id: ObjectId,
+    },
+
+    #[serde(rename = "accommodation")]
+    Accommodation {
+        time: NaiveTime,
+        accommodation_id: ObjectId,
+    },
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct ActivityLocation {
+pub struct ItemLocation {
     name: String,
     coordinates: (f32, f32),
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct Activity {
-    pub label: String,
-    pub description: String,
-    pub tags: Vec<String>,
 }

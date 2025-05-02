@@ -1,6 +1,6 @@
 use crate::{
     middleware::auth::Claims,
-    models::{account::Favorite, itinerary::FeaturedVacation},
+    models::{account::Favorite, itinerary::base::FeaturedVacation},
     services::itinerary_service::get_images,
 };
 use actix_web::{web, HttpResponse, Responder};
@@ -130,6 +130,8 @@ pub async fn get_favorites(
                         .iter()
                         .map(|favorite| favorite.itinerary_id.clone())
                         .collect();
+
+                    println!("\n\n Itinerary IDs: {:?}", itinerary_ids);
 
                     // Fetch itineraries from Itineraries.Featured collection
                     let itineraries_collection: mongodb::Collection<FeaturedVacation> =
