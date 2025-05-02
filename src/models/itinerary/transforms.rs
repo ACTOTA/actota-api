@@ -13,36 +13,47 @@ use std::collections::{HashMap, HashSet};
 use std::env;
 
 // Helper function to fetch activity images from GCS bucket
-async fn fetch_activity_images(activity_id: &str) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+async fn fetch_activity_images(
+    activity_id: &str,
+) -> Result<Vec<String>, Box<dyn std::error::Error>> {
     // Get bucket name from environment variable
     let bucket_name = env::var("ACTIVITY_BUCKET").map_err(|_| "ACTIVITY_BUCKET not set")?;
-    let base_url = env::var("CLOUD_STORAGE_URL").unwrap_or(format!("https://storage.googleapis.com/{}", bucket_name));
-    
+    let base_url = "https://storage.googleapis.com";
+
     // Initialize GCS client
     let client_config = ClientConfig::default().with_auth().await?;
     let gcs_client = GcsClient::new(client_config);
-    
-    // Create the folder path for this activity
-    let prefix = format!("{}/", activity_id);
-    
+
     // Create a list request for the activity's folder
     let list_request = ListObjectsRequest {
         bucket: bucket_name.clone(),
-        prefix: Some(prefix),
+        prefix: Some(activity_id.to_string()),
         ..Default::default()
     };
-    
+
+    let mut images = Vec::new();
+
     // List objects in the activity's folder
-    let objects = gcs_client.list_objects(&list_request).await?;
-    
-    // Generate public URLs for each image
-    let images = objects.items.unwrap_or_default()
-        .into_iter()
-        .map(|object| {
-            format!("{}/{}", base_url, object.name)
-        })
-        .collect();
-    
+    match gcs_client.list_objects(&list_request).await {
+        Ok(response) => {
+            let items = response.items.unwrap_or_default();
+
+            for item in items {
+                let name = item.name;
+                if name.ends_with(".jpg") || name.ends_with(".jpeg") || name.ends_with(".png") {
+                    let url = format!("{}/{}/{}", base_url, bucket_name, name);
+                    images.push(url);
+                }
+            }
+        }
+        Err(e) => {
+            println!(
+                "Error listing objects for activity {}: {:?}",
+                activity_id, e
+            );
+        }
+    };
+
     Ok(images)
 }
 
@@ -137,21 +148,22 @@ impl FeaturedVacation {
                         // Get activity or create a placeholder if not found
                         if let Some(activity) = activities_map.get(&activity_id) {
                             let mut activity_with_images = activity.clone();
-                            
+
                             // Get images from ACTIVITY_BUCKET for this activity
                             if let Some(id) = activity.id {
                                 let activity_id_str = id.to_string();
                                 if let Ok(images) = fetch_activity_images(&activity_id_str).await {
-                                    activity_with_images.images = Some(images);
+                                    activity_with_images.images = Some(images.clone());
+                                    activity_with_images.primary_image = Some(images[0].clone());
                                 }
                             }
-                            
+
                             activities.push(ActivitySummary {
                                 time,
                                 label: activity_with_images.title.clone(),
                                 tags: activity_with_images.tags.clone(),
                             });
-                            
+
                             PopulatedDayItem::Activity {
                                 time,
                                 activity_id: Some(activity_id), // Include the activity_id for backward compatibility
@@ -197,6 +209,7 @@ impl FeaturedVacation {
                                         maximum: 10,
                                     },
                                     activities: None,
+                                    primary_image: None,
                                     images: None,
                                 },
                             }
@@ -231,6 +244,7 @@ impl FeaturedVacation {
                                     location: None,
                                     price_per_night: None,
                                     amenities: Some(vec!["Information unavailable".to_string()]),
+                                    primary_image: None,
                                     images: None,
                                     created_at: Some(chrono::Utc::now()),
                                     updated_at: Some(chrono::Utc::now()),

@@ -30,11 +30,7 @@ async fn create_storage_client() -> Client {
 }
 
 pub async fn get_images(mut vacations: Vec<FeaturedVacation>) -> Vec<FeaturedVacation> {
-    let base_url = env::var("CLOUD_STORAGE_URL").unwrap_or_else(|_| {
-        println!("Warning: CLOUD_STORAGE_URL not set, defaulting to storage.googleapis.com");
-        "https://storage.googleapis.com".to_string()
-    });
-
+    let base_url = "https://storage.googleapis.com";
     let bucket_name = env::var("ITINERARY_BUCKET").unwrap_or_else(|_| {
         println!("Warning: ITINERARY_BUCKET not set, defaulting to actota-itineraries");
         "actota-itineraries".to_string()
@@ -78,7 +74,10 @@ pub async fn get_images(mut vacations: Vec<FeaturedVacation>) -> Vec<FeaturedVac
                     for item in items {
                         let name = &item.name;
 
-                        if name.ends_with(".jpg") || name.ends_with(".png") {
+                        if name.ends_with(".jpg")
+                            || name.ends_with(".jpeg")
+                            || name.ends_with(".png")
+                        {
                             let url = format!("{}/{}/{}", base_url, bucket_name, name);
                             println!("Found image: {}", url);
                             files.push(url);
