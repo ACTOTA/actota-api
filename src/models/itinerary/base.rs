@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 
-use chrono::{DateTime, NaiveTime, Utc};
+use chrono::NaiveTime;
 use mongodb::bson::oid::ObjectId;
+use mongodb::bson::DateTime;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -21,15 +22,15 @@ pub struct Activity {
     pub tags: Vec<String>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ItinerarySubmission {
     #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
     pub id: Option<ObjectId>,
     pub user_id: Option<ObjectId>,
     pub location_start: String,
     pub location_end: String,
-    pub arrival_datetime: DateTime<Utc>,
-    pub departure_datetime: DateTime<Utc>,
+    pub arrival_datetime: DateTime,
+    pub departure_datetime: DateTime,
     pub adults: u32,
     pub children: u32,
     pub infants: u32,
@@ -39,8 +40,8 @@ pub struct ItinerarySubmission {
     pub transportation: String,
     pub budger_per_person: Option<f32>,
     pub interests: Option<Vec<String>>,
-    pub created_at: Option<DateTime<Utc>>,
-    pub updated_at: Option<DateTime<Utc>>,
+    pub created_at: Option<DateTime>,
+    pub updated_at: Option<DateTime>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -61,8 +62,8 @@ pub struct FeaturedVacation {
     #[serde(flatten)]
     pub days: Days,
     pub images: Option<Vec<String>>,
-    pub created_at: Option<DateTime<Utc>>,
-    pub updated_at: Option<DateTime<Utc>>,
+    pub created_at: Option<DateTime>,
+    pub updated_at: Option<DateTime>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]

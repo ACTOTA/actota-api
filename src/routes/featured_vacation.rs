@@ -1,7 +1,6 @@
 use crate::{models::itinerary::base::FeaturedVacation, services::itinerary_service::get_images};
 use actix_web::{web, HttpResponse, Responder};
-use bson::doc;
-use chrono::Utc;
+use bson::{doc, DateTime};
 use futures::TryStreamExt;
 use mongodb::Client;
 use std::sync::Arc;
@@ -82,7 +81,7 @@ pub async fn add(
 
     println!("Input: {:?}", input);
 
-    let curr_time = Utc::now();
+    let curr_time = DateTime::now();
     let mut submission = input.into_inner();
     submission.updated_at = Some(curr_time);
     submission.created_at = Some(curr_time);
