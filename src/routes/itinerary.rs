@@ -3,7 +3,7 @@ use crate::models::{itinerary::base::FeaturedVacation, search::SearchItinerary};
 use crate::services::itinerary_search_service::search_itineraries;
 use crate::services::itinerary_service::get_images;
 use actix_web::{web, HttpResponse, Responder};
-use bson::doc;
+use bson::{doc, DateTime};
 use futures::TryStreamExt;
 use mongodb::{bson::oid::ObjectId, Client};
 use std::sync::Arc;
@@ -92,6 +92,10 @@ pub async fn get_all(
             .map_or(false, |locs| !locs.is_empty())
         {
             // Create a minimal submission record from the search parameters
+            let now = DateTime::now();
+            let chrono_date = chrono::Utc::now() + chrono::Duration::days(7);
+            let week_out = bson::DateTime::from_millis(chrono_date.timestamp_millis());
+
             let search_log = ItinerarySubmission {
                 id: None,
                 user_id: None, // Anonymous search
@@ -105,8 +109,8 @@ pub async fn get_all(
                     .as_ref()
                     .and_then(|l| l.last().cloned())
                     .unwrap_or_default(),
-                arrival_datetime: chrono::Utc::now(), // Default to current time
-                departure_datetime: chrono::Utc::now() + chrono::Duration::days(7), // Default to a week later
+                arrival_datetime: now,        // Default to current time
+                departure_datetime: week_out, // Default to a week later
                 adults: search_query.adults.unwrap_or(1),
                 children: search_query.children.unwrap_or(0),
                 infants: search_query.infants.unwrap_or(0),
@@ -125,8 +129,8 @@ pub async fn get_all(
                 transportation: search_query.transportation.unwrap_or_default(),
                 budger_per_person: None,
                 interests: None,
-                created_at: Some(chrono::Utc::now()),
-                updated_at: Some(chrono::Utc::now()),
+                created_at: Some(now),
+                updated_at: Some(now),
             };
 
             // Log the search asynchronously (don't wait for result)
