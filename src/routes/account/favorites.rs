@@ -150,8 +150,26 @@ pub async fn get_favorites(
                                 Ok(mut featured_itineraries) => {
                                     // Fetch images for each itinerary
                                     featured_itineraries = get_images(featured_itineraries).await;
-
-                                    HttpResponse::Ok().json(featured_itineraries)
+                                    
+                                    // Populate each itinerary to include person_cost
+                                    let mut populated_itineraries = Vec::new();
+                                    
+                                    for itinerary in featured_itineraries.clone() {
+                                        match itinerary.populate(&client).await {
+                                            Ok(populated) => populated_itineraries.push(populated),
+                                            Err(err) => {
+                                                eprintln!("Failed to populate itinerary: {:?}", err);
+                                                // Skip this itinerary if population fails
+                                            }
+                                        }
+                                    }
+                                    
+                                    if !populated_itineraries.is_empty() {
+                                        HttpResponse::Ok().json(populated_itineraries)
+                                    } else {
+                                        // Fallback to original itineraries if population failed
+                                        HttpResponse::Ok().json(featured_itineraries)
+                                    }
                                 }
                                 Err(err) => {
                                     eprintln!("Error fetching itineraries: {:?}", err);

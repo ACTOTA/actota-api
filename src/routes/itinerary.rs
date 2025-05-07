@@ -23,9 +23,38 @@ pub async fn get_by_id(path: web::Path<String>, data: web::Data<Arc<Client>>) ->
     let filter = doc! { "_id": id };
 
     println!("Filter: {:?}", filter);
+    // Before attempting to deserialize
+    //
+    println!(
+        "\n\nDocument structure: {}",
+        bson::to_document(&filter).unwrap()
+    );
+
+    // Try deserializing just the problematic field
+    if let Ok(cost) = filter.get_i32("min_group") {
+        println!("Successfully extracted person_cost: {}", cost);
+    } else {
+        println!(
+            "Failed to extract person_cost: {:?}",
+            filter.get("person_cost")
+        );
+    }
 
     match collection.find_one(filter).await {
         Ok(Some(doc)) => {
+            println!("=== FULL DOCUMENT STRUCTURE ===");
+
+            // Get the raw BSON document
+            let raw_doc = match bson::to_raw_document_buf(&doc) {
+                Ok(raw) => raw,
+                Err(e) => {
+                    println!("Error converting to raw document: {:?}", e);
+                    return HttpResponse::InternalServerError().body("Conversion error");
+                }
+            };
+
+            println!("{:#?}", raw_doc);
+
             let processed_doc = get_images(vec![doc.clone()]).await;
 
             // Add await here to resolve the future
@@ -127,7 +156,7 @@ pub async fn get_all(
                     .collect(),
                 lodging: search_query.lodging.unwrap_or_default(),
                 transportation: search_query.transportation.unwrap_or_default(),
-                budger_per_person: None,
+                budget_per_person: None,
                 interests: None,
                 created_at: Some(now),
                 updated_at: Some(now),
@@ -154,8 +183,26 @@ pub async fn get_all(
 
                 // Process images for the found itineraries
                 let processed_itineraries = get_images(itineraries).await;
-
-                HttpResponse::Ok().json(processed_itineraries)
+                
+                // Populate each itinerary to include person_cost
+                let mut populated_itineraries = Vec::new();
+                
+                for itinerary in processed_itineraries.clone() {
+                    match itinerary.populate(&client).await {
+                        Ok(populated) => populated_itineraries.push(populated),
+                        Err(err) => {
+                            eprintln!("Failed to populate itinerary: {:?}", err);
+                            // Skip this itinerary if population fails
+                        }
+                    }
+                }
+                
+                if !populated_itineraries.is_empty() {
+                    HttpResponse::Ok().json(populated_itineraries)
+                } else {
+                    // Fallback to original itineraries if population failed
+                    HttpResponse::Ok().json(processed_itineraries)
+                }
             }
             Err(err) => {
                 eprintln!("Error searching for itineraries: {:?}", err);
@@ -187,8 +234,26 @@ pub async fn get_all(
                         "Processed {} itineraries with images",
                         processed_itineraries.len()
                     );
-
-                    HttpResponse::Ok().json(processed_itineraries)
+                    
+                    // Populate each itinerary to include person_cost
+                    let mut populated_itineraries = Vec::new();
+                    
+                    for itinerary in processed_itineraries.clone() {
+                        match itinerary.populate(&client).await {
+                            Ok(populated) => populated_itineraries.push(populated),
+                            Err(err) => {
+                                eprintln!("Failed to populate itinerary: {:?}", err);
+                                // Skip this itinerary if population fails
+                            }
+                        }
+                    }
+                    
+                    if !populated_itineraries.is_empty() {
+                        HttpResponse::Ok().json(populated_itineraries)
+                    } else {
+                        // Fallback to original itineraries if population failed
+                        HttpResponse::Ok().json(processed_itineraries)
+                    }
                 }
                 Err(err) => {
                     eprintln!("Failed to collect itineraries: {:?}", err);
