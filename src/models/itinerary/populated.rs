@@ -111,6 +111,7 @@ pub enum PopulatedDayItem {
 pub struct PopulatedFeaturedVacation {
     // Reuse the original struct rather than duplicating all fields
     pub base: FeaturedVacation,
+    pub person_cost: f32,
     pub populated_days: HashMap<String, Vec<PopulatedDayItem>>,
     pub activities: Vec<ActivitySummary>,
 }
@@ -122,13 +123,12 @@ impl Serialize for PopulatedFeaturedVacation {
         S: Serializer,
     {
         // Create a serialization struct with all the fields
-        let mut state = serializer.serialize_struct("PopulatedFeaturedVacation", 16)?;
+        let mut state = serializer.serialize_struct("PopulatedFeaturedVacation", 18)?;
 
         // Serialize all base fields
         state.serialize_field("_id", &self.base.id)?;
         state.serialize_field("fareharbor_id", &self.base.fareharbor_id)?;
         state.serialize_field("trip_name", &self.base.trip_name)?;
-        state.serialize_field("person_cost", &self.base.person_cost)?;
         state.serialize_field("min_age", &self.base.min_age)?;
         state.serialize_field("min_group", &self.base.min_group)?;
         state.serialize_field("max_group", &self.base.max_group)?;
@@ -141,8 +141,14 @@ impl Serialize for PopulatedFeaturedVacation {
         state.serialize_field("created_at", &self.base.created_at)?;
         state.serialize_field("updated_at", &self.base.updated_at)?;
 
+        // Serialize the person_cost field
+        state.serialize_field("person_cost", &self.person_cost)?;
+        
         // Serialize the populated days
         state.serialize_field("days", &self.populated_days)?;
+        
+        // Serialize the activities summary
+        state.serialize_field("activities", &self.activities)?;
 
         state.end()
     }
@@ -152,20 +158,27 @@ impl Serialize for PopulatedFeaturedVacation {
 impl PopulatedFeaturedVacation {
     pub fn from_base(
         base: FeaturedVacation,
+        person_cost: f32,
         populated_days: HashMap<String, Vec<PopulatedDayItem>>,
         activities: Vec<ActivitySummary>,
     ) -> Self {
         Self {
             base,
+            person_cost,
             populated_days,
             activities,
         }
     }
+    
     pub fn id(&self) -> Option<ObjectId> {
         self.base.id
     }
 
     pub fn trip_name(&self) -> &str {
         &self.base.trip_name
+    }
+    
+    pub fn person_cost(&self) -> f32 {
+        self.person_cost
     }
 }
