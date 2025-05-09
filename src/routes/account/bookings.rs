@@ -1,15 +1,20 @@
 use crate::{
     middleware::auth::Claims,
-    models::{bookings::Booking, itinerary::base::FeaturedVacation},
+    models::{
+        bookings::{BookingDetails, BookingInput},
+        itinerary::base::FeaturedVacation,
+    },
 };
 use actix_web::{web, HttpResponse, Responder};
-use bson::{doc, oid::ObjectId};
+use bson::{doc, oid::ObjectId, DateTime};
 use futures::TryStreamExt;
 use mongodb::Client;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 pub async fn add_booking(
     data: web::Data<Arc<Client>>,
+    input: web::Json<BookingInput>,
     path: web::Path<(String, String)>,
     claims: Claims,
 ) -> impl Responder {
@@ -20,6 +25,7 @@ pub async fn add_booking(
     }
 
     let client = data.into_inner();
+    let input = input.into_inner();
 
     // Verify itinerary exists in the database
     let itinerary: mongodb::Collection<FeaturedVacation> =
@@ -33,7 +39,10 @@ pub async fn add_booking(
         return HttpResponse::NotFound().body("Itinerary not found");
     }
 
-    let collection: mongodb::Collection<Booking> =
+    let arrival_datetime = input.arrival_datetime;
+    let departure_datetime = input.departure_datetime;
+
+    let collection: mongodb::Collection<BookingDetails> =
         client.database("Account").collection("Bookings");
 
     let filter = doc! {
@@ -49,13 +58,16 @@ pub async fn add_booking(
         Ok(None) => {
             // Not a booking yet
             // Add the booking
-            let time = chrono::Utc::now();
+            let time = DateTime::now();
 
-            let booking = Booking {
+            let booking = BookingDetails {
                 id: None,
                 user_id: ObjectId::parse_str(&claims.user_id).unwrap(),
                 itinerary_id: ObjectId::parse_str(&itinerary_id).unwrap(),
                 status: "ongoing".to_string(),
+                arrival_datetime,
+                departure_datetime,
+                bookings: None,
                 created_at: Some(time),
                 updated_at: Some(time),
             };
@@ -81,7 +93,7 @@ pub async fn remove_booking(
     claims: Claims,
 ) -> impl Responder {
     let client = data.into_inner();
-    let collection: mongodb::Collection<Booking> =
+    let collection: mongodb::Collection<BookingDetails> =
         client.database("Account").collection("Bookings");
 
     let (user_id, itinerary_id) = path.into_inner();
@@ -110,7 +122,7 @@ pub async fn get_booking(
     claims: Claims,
 ) -> impl Responder {
     let client = data.into_inner();
-    let collection: mongodb::Collection<Booking> =
+    let collection: mongodb::Collection<BookingDetails> =
         client.database("Account").collection("Bookings");
 
     let (user_id, itinerary_id) = path.into_inner();
@@ -142,7 +154,7 @@ pub async fn get_all_bookings(
     claims: Claims,
 ) -> impl Responder {
     let client = data.into_inner();
-    let collection: mongodb::Collection<Booking> =
+    let collection: mongodb::Collection<BookingDetails> =
         client.database("Account").collection("Bookings");
 
     if path.into_inner().0 != claims.user_id {
@@ -155,7 +167,7 @@ pub async fn get_all_bookings(
 
     match collection.find(filter).await {
         Ok(cursor) => {
-            let results = cursor.try_collect::<Vec<Booking>>().await;
+            let results = cursor.try_collect::<Vec<BookingDetails>>().await;
             match results {
                 Ok(bookings) => return HttpResponse::Ok().json(bookings),
                 Err(err) => {
