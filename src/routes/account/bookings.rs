@@ -9,7 +9,6 @@ use actix_web::{web, HttpResponse, Responder};
 use bson::{doc, oid::ObjectId, DateTime};
 use futures::TryStreamExt;
 use mongodb::Client;
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 pub async fn add_booking(
@@ -164,6 +163,8 @@ pub async fn get_all_bookings(
     let filter = doc! {
         "user_id": ObjectId::parse_str(&claims.user_id).unwrap()
     };
+
+    println!("Getting bookings!");
 
     match collection.find(filter).await {
         Ok(cursor) => {

@@ -28,6 +28,7 @@ pub struct SingleBooking {
     pub id: Option<ObjectId>,
     pub platform: String, // Booking platform/API
     pub item_id: String,
+    pub status: String,
     pub created_at: Option<DateTime>,
     pub updated_at: Option<DateTime>,
 }
