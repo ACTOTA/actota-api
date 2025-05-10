@@ -62,6 +62,7 @@ impl FeaturedVacation {
         // 1. Extract all activity and accommodation IDs
         let mut activity_ids = HashSet::new();
         let mut accommodation_ids = HashSet::new();
+        let mut person_cost: f32 = 0.0;
 
         println!("Days.days: {:?}", &self.days.days);
 
@@ -98,6 +99,9 @@ impl FeaturedVacation {
             let activities: Vec<ActivityModel> = cursor.try_collect().await?;
 
             for activity in activities {
+                // Add activity price to person_cost
+                person_cost += activity.price_per_person as f32;
+
                 if let Some(id) = activity.id {
                     activities_map.insert(id, activity);
                 }
@@ -119,6 +123,11 @@ impl FeaturedVacation {
             let accommodations: Vec<AccommodationModel> = cursor.try_collect().await?;
 
             for accommodation in accommodations {
+                // Add accommodation price to person_cost (divide by number of people if applicable)
+                if let Some(price) = accommodation.price_per_night {
+                    person_cost += price as f32;
+                }
+                
                 if let Some(id) = accommodation.id {
                     accommodations_map.insert(id, accommodation);
                 }
@@ -263,6 +272,7 @@ impl FeaturedVacation {
         // 5. Return populated vacation
         Ok(PopulatedFeaturedVacation {
             base: self,
+            person_cost,
             populated_days,
             activities,
         })
