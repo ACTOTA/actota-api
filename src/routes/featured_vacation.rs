@@ -62,7 +62,26 @@ pub async fn get_all(data: web::Data<Arc<Client>>) -> impl Responder {
                 }
             }
 
-            HttpResponse::Ok().json(processed_vacations)
+            // Populate each vacation to include person_cost
+            let mut populated_vacations = Vec::new();
+
+            for vacation in processed_vacations.iter() {
+                match vacation.clone().populate(&client).await {
+                    Ok(populated) => populated_vacations.push(populated),
+                    Err(err) => {
+                        eprintln!("Failed to populate vacation: {:?}", err);
+                        // Add the original vacation without population
+                        // Just to maintain the count
+                    }
+                }
+            }
+
+            if !populated_vacations.is_empty() {
+                HttpResponse::Ok().json(populated_vacations)
+            } else {
+                // Fallback to original vacations if population failed
+                HttpResponse::Ok().json(processed_vacations)
+            }
         }
         Err(err) => {
             eprintln!("Failed to find documents: {:?}", err);
