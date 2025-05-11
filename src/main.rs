@@ -293,6 +293,11 @@ async fn main() -> std::io::Result<()> {
                                 "/{id}/payment-methods/detach",
                                 web::post() // Using post to send data in body
                                     .to(routes::account::payment_methods::detach_payment_method),
+                            )
+                            .route(
+                                "/{id}/update-customer-id",
+                                web::post()
+                                    .to(routes::account::payment_methods_update::update_customer_id),
                             ),
                     )
                     .service(
