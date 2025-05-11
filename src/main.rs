@@ -253,6 +253,14 @@ async fn main() -> std::io::Result<()> {
                                 web::delete().to(routes::account::bookings::remove_booking),
                             )
                             .route(
+                                "/{id}/bookings/{itinerary_id}/payment",
+                                web::put().to(routes::account::bookings::update_booking_payment),
+                            )
+                            .route(
+                                "/{id}/bookings/{itinerary_id}/with-payment",
+                                web::post().to(routes::account::bookings::add_booking_with_payment),
+                            )
+                            .route(
                                 "/{id}/payment-methods",
                                 web::get()
                                     .to(routes::account::payment_methods::get_payment_methods),
