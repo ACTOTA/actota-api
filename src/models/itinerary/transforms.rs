@@ -127,7 +127,7 @@ impl FeaturedVacation {
                 if let Some(price) = accommodation.price_per_night {
                     person_cost += price as f32;
                 }
-                
+
                 if let Some(id) = accommodation.id {
                     accommodations_map.insert(id, accommodation);
                 }
@@ -162,8 +162,10 @@ impl FeaturedVacation {
                             if let Some(id) = activity.id {
                                 let activity_id_str = id.to_string();
                                 if let Ok(images) = fetch_activity_images(&activity_id_str).await {
-                                    activity_with_images.images = Some(images.clone());
-                                    activity_with_images.primary_image = Some(images[0].clone());
+                                    if !images.is_empty() {
+                                        activity_with_images.images = Some(images.clone());
+                                        activity_with_images.primary_image = Some(images[0].clone());
+                                    }
                                 }
                             }
 

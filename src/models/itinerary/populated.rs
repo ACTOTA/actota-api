@@ -143,10 +143,10 @@ impl Serialize for PopulatedFeaturedVacation {
 
         // Serialize the person_cost field
         state.serialize_field("person_cost", &self.person_cost)?;
-        
+
         // Serialize the populated days
         state.serialize_field("days", &self.populated_days)?;
-        
+
         // Serialize the activities summary
         state.serialize_field("activities", &self.activities)?;
 
@@ -169,7 +169,7 @@ impl PopulatedFeaturedVacation {
             activities,
         }
     }
-    
+
     pub fn id(&self) -> Option<ObjectId> {
         self.base.id
     }
@@ -177,7 +177,7 @@ impl PopulatedFeaturedVacation {
     pub fn trip_name(&self) -> &str {
         &self.base.trip_name
     }
-    
+
     pub fn person_cost(&self) -> f32 {
         self.person_cost
     }
