@@ -4,12 +4,29 @@ use actix_web::{web, HttpResponse, Responder};
 use bson::{doc, oid::ObjectId};
 use futures::TryStreamExt;
 use serde::{Deserialize, Serialize};
-use stripe::{Charge, CustomerId, ListCharges};
+use stripe::{Charge, CustomerId, ListCharges, PaymentIntent};
 
 use crate::{
     middleware::auth::Claims,
     models::{account::User, bookings::BookingDetails},
 };
+
+// Custom struct to wrap Stripe charge with booking_id
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct TransactionWithBooking {
+    #[serde(flatten)]
+    charge: Charge,
+    booking_id: String,
+}
+
+// Custom response that mimics Stripe's List response but with our custom transaction type
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct TransactionsWithBookingIds {
+    object: String, // This will be set to a constant value
+    url: String,
+    has_more: bool,
+    data: Vec<TransactionWithBooking>,
+}
 
 #[derive(Serialize, Deserialize)]
 pub struct TransactionsInput {
@@ -81,33 +98,62 @@ pub async fn get_transactions(
 
                                         // println!("Charges: {:?}", charges.data.iter());
 
-                                        // Filter charges to only include those with payment_intent IDs matching booking transaction_ids
-                                        let filtered_charges = charges
-                                            .data
-                                            .iter()
-                                            .filter(|charge| {
-                                                // First try to match with payment_intent ID (most likely stored in transaction_id)
-                                                if let Some(payment_intent) = &charge.payment_intent {
-                                                    println!("\nPayment Intent: {:?}", &payment_intent);
-                                                    match payment_intent {
-                                                        stripe::Expandable::Id(id) => booking_transaction_ids.contains(&id.to_string()),
-                                                        stripe::Expandable::Object(intent) => booking_transaction_ids.contains(&intent.id.to_string()),
+                                        // Transform charges into transactions with booking IDs
+                                        let mut transactions_with_bookings = Vec::new();
+
+                                        // For each charge, find the matching booking and include its ID
+                                        for charge in charges.data.iter() {
+                                            let mut transaction_id = None;
+
+                                            // First try to get payment_intent ID
+                                            if let Some(payment_intent) = &charge.payment_intent {
+                                                transaction_id = match payment_intent {
+                                                    stripe::Expandable::Id(id) => {
+                                                        Some(id.to_string())
                                                     }
-                                                }
-                                                // Fall back to charge ID if payment_intent is not available
-                                                else {
-                                                    println!("\nCharge ID: {:?}", &charge.id);
-                                                    booking_transaction_ids.contains(&charge.id.to_string())
-                                                }
-                                            })
-                                            .cloned()
-                                            .collect::<Vec<Charge>>();
+                                                    stripe::Expandable::Object(intent) => {
+                                                        Some(intent.id.to_string())
+                                                    }
+                                                };
+                                            }
 
-                                        // Create a new charges object with filtered data
-                                        let mut filtered_charges_list = charges.clone();
-                                        filtered_charges_list.data = filtered_charges;
+                                            // Fall back to charge ID if payment_intent is not available
+                                            if transaction_id.is_none() {
+                                                transaction_id = Some(charge.id.to_string());
+                                            }
 
-                                        HttpResponse::Ok().json(filtered_charges_list)
+                                            if let Some(trans_id) = transaction_id {
+                                                // Find matching booking
+                                                if let Some(booking) = bookings.iter().find(|b| {
+                                                    b.transaction_id
+                                                        .as_ref()
+                                                        .map_or(false, |id| id == &trans_id)
+                                                }) {
+                                                    // Create transaction with booking ID
+                                                    let booking_id = booking.id.map_or_else(
+                                                        || "unknown".to_string(),
+                                                        |id| id.to_string(),
+                                                    );
+
+                                                    transactions_with_bookings.push(
+                                                        TransactionWithBooking {
+                                                            charge: charge.clone(),
+                                                            booking_id,
+                                                        },
+                                                    );
+                                                }
+                                            }
+                                        }
+
+                                        // Create custom response with our transactions
+                                        let transactions_response = TransactionsWithBookingIds {
+                                            object: "list".to_string(), // Set a constant value as "list" since this is a list of charges
+                                            url: charges.url.clone(),
+                                            has_more: charges.has_more,
+                                            data: transactions_with_bookings,
+                                        };
+
+                                        HttpResponse::Ok().json(transactions_response)
                                     }
                                     Err(e) => {
                                         eprintln!("Error collecting bookings: {:?}", e);
