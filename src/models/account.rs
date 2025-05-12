@@ -45,6 +45,7 @@ pub struct User {
     pub last_name: Option<String>,
     pub phone_number: Option<String>,
     pub birth_date: Option<NaiveDate>,
+    pub profile_picture: Option<String>, // URL to the profile picture in Google Cloud Storage
     // Security related fields
     pub last_signin: Option<DateTime<Utc>>,
     pub last_signin_ip: Option<String>,

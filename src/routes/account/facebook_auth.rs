@@ -3,7 +3,6 @@ use bson::{doc, oid::ObjectId};
 use chrono::Utc;
 use mongodb::Client;
 use oauth2::AuthorizationCode;
-use oauth2::CsrfToken;
 use std::sync::Arc;
 
 use crate::models::account::User;
@@ -108,6 +107,7 @@ pub async fn facebook_auth_callback(
                 last_signin_ip: None,
                 failed_signins: Some(0),
                 notification: None,
+                profile_picture: None,
                 created_at: Some(now),
                 updated_at: Some(now),
             };

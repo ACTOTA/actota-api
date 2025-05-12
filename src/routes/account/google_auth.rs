@@ -3,7 +3,6 @@ use bson::{doc, oid::ObjectId};
 use chrono::Utc;
 use mongodb::Client;
 use oauth2::AuthorizationCode;
-use oauth2::CsrfToken;
 use std::sync::Arc;
 
 use crate::models::account::User;
@@ -107,6 +106,7 @@ pub async fn google_auth_callback(
                 last_signin_ip: None,
                 failed_signins: Some(0),
                 notification: None,
+                profile_picture: None,
                 created_at: Some(now),
                 updated_at: Some(now),
             };
@@ -119,7 +119,9 @@ pub async fn google_auth_callback(
                     match generate_token(&new_user.email, user_id) {
                         Ok(token) => {
                             // Redirect to frontend with token
-                            let redirect_url = format!("/?token={}", token);
+                            let frontend_url = std::env::var("FRONTEND_URL")
+                                .unwrap_or("http://localhost:3000".to_string());
+                            let redirect_url = format!("{}/?token={}", frontend_url, token);
                             HttpResponse::Found()
                                 .insert_header((header::LOCATION, redirect_url))
                                 .finish()

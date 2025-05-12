@@ -302,6 +302,11 @@ async fn main() -> std::io::Result<()> {
                                 "/{id}/update-customer-id",
                                 web::post()
                                     .to(routes::account::payment_methods_update::update_customer_id),
+                            )
+                            .route(
+                                "/{id}/profile-picture",
+                                web::post()
+                                    .to(routes::account::account_info::upload_profile_pic),
                             ),
                     )
                     .service(
