@@ -241,23 +241,27 @@ async fn main() -> std::io::Result<()> {
                                 web::get().to(routes::account::bookings::get_all_bookings),
                             )
                             .route(
-                                "/{id}/bookings/{itinerary_id}",
+                                "/{id}/bookings/{booking_id}",
+                                web::get().to(routes::account::bookings::get_booking_by_id),
+                            )
+                            .route(
+                                "/{id}/bookings/itinerary/{itinerary_id}",
                                 web::get().to(routes::account::bookings::get_booking),
                             )
                             .route(
-                                "/{id}/bookings/{itinerary_id}",
+                                "/{id}/bookings/itinerary/{itinerary_id}",
                                 web::post().to(routes::account::bookings::add_booking),
                             )
                             .route(
-                                "/{id}/bookings/{itinerary_id}",
+                                "/{id}/bookings/itinerary/{itinerary_id}",
                                 web::delete().to(routes::account::bookings::remove_booking),
                             )
                             .route(
-                                "/{id}/bookings/{itinerary_id}/payment",
+                                "/{id}/bookings/itinerary/{itinerary_id}/payment",
                                 web::put().to(routes::account::bookings::update_booking_payment),
                             )
                             .route(
-                                "/{id}/bookings/{itinerary_id}/with-payment",
+                                "/{id}/bookings/itinerary/{itinerary_id}/with-payment",
                                 web::post().to(routes::account::bookings::add_booking_with_payment),
                             )
                             .route(

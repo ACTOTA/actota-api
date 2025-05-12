@@ -251,6 +251,51 @@ pub async fn get_all_bookings(
     }
 }
 
+pub async fn get_booking_by_id(
+    data: web::Data<Arc<Client>>,
+    path: web::Path<(String, String)>,
+    claims: Claims,
+) -> impl Responder {
+    let client = data.into_inner();
+    let collection: mongodb::Collection<BookingDetails> =
+        client.database("Account").collection("Bookings");
+
+    let (user_id, booking_id) = path.into_inner();
+    if user_id != claims.user_id {
+        return HttpResponse::Forbidden().body("Forbidden");
+    }
+
+    // Parse booking ObjectId
+    let booking_object_id = match ObjectId::parse_str(&booking_id) {
+        Ok(id) => id,
+        Err(e) => {
+            eprintln!("Invalid booking ID format: {:?}", e);
+            return HttpResponse::BadRequest().body("Invalid booking ID format");
+        }
+    };
+
+    // Create filter to check both user_id and booking ID
+    let filter = doc! {
+        "_id": booking_object_id,
+        "user_id": ObjectId::parse_str(&claims.user_id).unwrap(),
+    };
+
+    println!("Getting booking by ID: {}", booking_id);
+
+    match collection.find_one(filter).await {
+        Ok(Some(booking)) => {
+            return HttpResponse::Ok().json(booking);
+        }
+        Ok(None) => {
+            return HttpResponse::NotFound().body("Booking not found");
+        }
+        Err(e) => {
+            eprintln!("Error fetching booking: {:?}", e);
+            HttpResponse::InternalServerError().body("Failed to fetch booking")
+        }
+    }
+}
+
 pub async fn add_booking_with_payment(
     mongodb_data: web::Data<Arc<Client>>,
     stripe_data: web::Data<Arc<stripe::Client>>,
