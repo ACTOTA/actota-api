@@ -1,4 +1,10 @@
-use crate::{models::itinerary::base::FeaturedVacation, services::itinerary_service::get_images};
+use crate::{
+    models::itinerary::base::FeaturedVacation, 
+    services::{
+        itinerary_service::get_images,
+        image_service::{ImageService, ImageData}
+    }
+};
 use actix_multipart::form::json;
 use actix_web::{web, HttpResponse, Responder};
 use bson::{doc, oid::ObjectId, DateTime};
@@ -94,39 +100,114 @@ pub async fn get_all(data: web::Data<Arc<Client>>) -> impl Responder {
 
 pub async fn add(
     data: web::Data<Arc<Client>>,
-    input: web::Json<FeaturedVacation>,
+    req_body: web::Json<serde_json::Value>,
 ) -> impl Responder {
     let client = data.into_inner();
     let collection: mongodb::Collection<FeaturedVacation> =
         client.database("Itineraries").collection("Featured");
 
-    println!("Input: {:?}", input);
-
+    let mut body = req_body.into_inner();
+    
     let curr_time = DateTime::now();
-    let mut submission = input.into_inner();
+    
+    // Extract images before trying to deserialize FeaturedVacation
+    let images_data = body.get("images").cloned();
+    // Remove images from the body so FeaturedVacation can deserialize properly
+    body.as_object_mut().unwrap().remove("images");
+    
+    let mut submission: FeaturedVacation = match serde_json::from_value(body.clone()) {
+        Ok(sub) => sub,
+        Err(err) => {
+            eprintln!("Failed to parse request body: {:?}", err);
+            return HttpResponse::BadRequest().json(json!({
+                "success": false,
+                "message": "Invalid request format"
+            }));
+        }
+    };
+
     submission.updated_at = Some(curr_time);
     submission.created_at = Some(curr_time);
 
-    match collection.insert_one(&submission).await {
-        Ok(insert_result) => {
-            let object_id = insert_result.inserted_id.as_object_id().unwrap();
-
-            submission.id = Some(object_id);
-
-            HttpResponse::Ok().json(json!({
-                "success": true,
-                "data": submission,
-                "itineraryId": object_id.to_hex()
-            }))
-        }
+    let temp_insert_result = match collection.insert_one(&submission).await {
+        Ok(result) => result,
         Err(err) => {
             eprintln!("Failed to insert document: {:?}", err);
-            HttpResponse::InternalServerError().json(json!({
+            return HttpResponse::InternalServerError().json(json!({
                 "success": false,
                 "message": "Failed to submit itinerary."
-            }))
+            }));
+        }
+    };
+
+    let object_id = temp_insert_result.inserted_id.as_object_id().unwrap();
+    let itinerary_id = object_id.to_hex();
+
+    if let Some(images_value) = images_data {
+        if let Some(images_array) = images_value.as_array() {
+            if !images_array.is_empty() {
+                let images: Vec<ImageData> = match serde_json::from_value(images_value.clone()) {
+                    Ok(imgs) => imgs,
+                    Err(err) => {
+                        eprintln!("Failed to parse images: {:?}", err);
+                        submission.id = Some(object_id);
+                        return HttpResponse::Ok().json(json!({
+                            "success": true,
+                            "data": submission,
+                            "itineraryId": itinerary_id,
+                            "warning": "Itinerary saved but images could not be processed"
+                        }));
+                    }
+                };
+
+                match ImageService::new().await {
+                    Ok(image_service) => {
+                        let upload_results = image_service.upload_images(images, &itinerary_id).await;
+                        
+                        let mut successful_urls = Vec::new();
+                        let mut failed_count = 0;
+
+                        for result in upload_results {
+                            match result {
+                                Ok(url) => successful_urls.push(url),
+                                Err(_) => failed_count += 1,
+                            }
+                        }
+
+                        if !successful_urls.is_empty() {
+                            let update_doc = doc! {
+                                "$set": {
+                                    "images": &successful_urls,
+                                    "updated_at": DateTime::now()
+                                }
+                            };
+
+                            if let Err(err) = collection.update_one(doc! { "_id": object_id }, update_doc).await {
+                                eprintln!("Failed to update itinerary with image URLs: {:?}", err);
+                            } else {
+                                submission.images = Some(successful_urls);
+                            }
+                        }
+
+                        if failed_count > 0 {
+                            eprintln!("Failed to upload {} images", failed_count);
+                        }
+                    },
+                    Err(err) => {
+                        eprintln!("Failed to initialize image service: {:?}", err);
+                    }
+                }
+            }
         }
     }
+
+    submission.id = Some(object_id);
+
+    HttpResponse::Ok().json(json!({
+        "success": true,
+        "data": submission,
+        "itineraryId": itinerary_id
+    }))
 }
 
 pub async fn update_itinerary_images(
