@@ -1,8 +1,10 @@
 use crate::{models::itinerary::base::FeaturedVacation, services::itinerary_service::get_images};
+use actix_multipart::form::json;
 use actix_web::{web, HttpResponse, Responder};
-use bson::{doc, DateTime};
+use bson::{doc, oid::ObjectId, DateTime};
 use futures::TryStreamExt;
 use mongodb::Client;
+use serde_json::json;
 use std::sync::Arc;
 
 /*
@@ -106,10 +108,125 @@ pub async fn add(
     submission.created_at = Some(curr_time);
 
     match collection.insert_one(&submission).await {
-        Ok(_) => HttpResponse::Ok().json(submission), // Return the created submission
+        Ok(insert_result) => {
+            let object_id = insert_result.inserted_id.as_object_id().unwrap();
+
+            submission.id = Some(object_id);
+
+            HttpResponse::Ok().json(json!({
+                "success": true,
+                "data": submission,
+                "itineraryId": object_id.to_hex()
+            }))
+        }
         Err(err) => {
             eprintln!("Failed to insert document: {:?}", err);
-            HttpResponse::InternalServerError().body("Failed to submit itinerary.")
+            HttpResponse::InternalServerError().json(json!({
+                "success": false,
+                "message": "Failed to submit itinerary."
+            }))
+        }
+    }
+}
+
+pub async fn update_itinerary_images(
+    data: web::Data<Arc<Client>>,
+    path: web::Path<String>,
+    req_body: web::Json<serde_json::Value>,
+) -> impl Responder {
+    let itinerary_id = path.into_inner();
+    let client = data.into_inner();
+
+    let object_id = match ObjectId::parse_str(&itinerary_id) {
+        Ok(id) => id,
+        Err(_) => {
+            return HttpResponse::BadRequest().json(json!({
+                "success": false,
+                "message": "Invalid itinerary ID format"
+            }));
+        }
+    };
+
+    let collection: mongodb::Collection<FeaturedVacation> =
+        client.database("Itineraries").collection("Featured");
+
+    let images = match req_body.get("images") {
+        Some(img_array) => match img_array.as_array() {
+            Some(arr) => {
+                if arr.is_empty() {
+                    return HttpResponse::BadRequest().json(json!({
+                        "success": false,
+                        "message": "Images array cannot be empty"
+                    }));
+                }
+
+                for (index, img) in arr.iter().enumerate() {
+                    if !img.is_string() {
+                        return HttpResponse::BadRequest().json(json!({
+                            "success": false,
+                            "message": format!("Image at index {} must be a string", index)
+                        }));
+                    }
+
+                    let img_str = img.as_str().unwrap();
+                    if img_str.trim().is_empty() {
+                        return HttpResponse::BadRequest().json(json!({
+                            "success": false,
+                            "message": format!("Image at index {} cannot be empty", index)
+                        }));
+                    }
+                }
+
+                arr.clone()
+            }
+            None => {
+                return HttpResponse::BadRequest().json(json!({
+                    "success": false,
+                    "message": "Images must be an array"
+                }));
+            }
+        },
+        None => {
+            return HttpResponse::BadRequest().json(json!({
+                "success": false,
+                "message": "Images array is required"
+            }));
+        }
+    };
+
+    // Convert images to BSON before using in doc! macro
+    let images_bson = bson::to_bson(&images).unwrap_or(bson::Bson::Array(vec![]));
+    let update_doc = doc! {
+        "$set": {
+            "images": images_bson,
+            "updated_at": DateTime::now()
+        }
+    };
+
+    match collection
+        .update_one(doc! { "_id": object_id }, update_doc)
+        .await
+    {
+        Ok(update_result) => {
+            if update_result.matched_count == 0 {
+                HttpResponse::NotFound().json(json!({
+                    "success": false,
+                    "message": "Itinerary not found"
+                }))
+            } else {
+                HttpResponse::Ok().json(json!({
+                    "success": true,
+                    "message": "Images updated successfully",
+                    "modified_count": update_result.modified_count
+                }))
+            }
+        }
+        Err(err) => {
+            eprintln!("Failed to update itinerary images: {:?}", err);
+            HttpResponse::InternalServerError().json(json!({
+                "success": false,
+                "message": "Failed to update itinerary images"
+            }))
         }
     }
 }
