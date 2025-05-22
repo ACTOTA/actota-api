@@ -316,8 +316,8 @@ async fn main() -> std::io::Result<()> {
                             .wrap(middleware::auth::AuthMiddleware)
                             .service(
                                 web::scope("/users")
-                                    .route("/users", web::get().to(routes::account::role_management::list_users_with_roles))
-                                    .route("/users/{id}/role", web::put().to(routes::account::role_management::update_user_role))
+                                    .route("", web::get().to(routes::account::role_management::list_users_with_roles))
+                                    .route("/{id}/role", web::put().to(routes::account::role_management::update_user_role))
                             )
                             .service(
                                 web::scope("/itineraries")
