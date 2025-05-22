@@ -34,6 +34,15 @@ pub struct Notification {
     pub newsletter: bool,
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum UserRole {
+    #[serde(rename = "user")]
+    User,
+    #[serde(rename = "admin")]
+    Admin,
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct User {
     #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
@@ -45,10 +54,13 @@ pub struct User {
     pub last_name: Option<String>,
     pub phone_number: Option<String>,
     pub birth_date: Option<NaiveDate>,
+    pub profile_picture: Option<String>, // URL to the profile picture in Google Cloud Storage
     // Security related fields
     pub last_signin: Option<DateTime<Utc>>,
     pub last_signin_ip: Option<String>,
     pub failed_signins: Option<i32>,
+    // Permission field
+    pub role: Option<UserRole>,
     // We always want these fields, but have them optional so we can set them in the code
     pub notification: Option<Notification>,
     pub created_at: Option<DateTime<Utc>>,

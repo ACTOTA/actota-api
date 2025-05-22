@@ -3,10 +3,9 @@ use bson::{doc, oid::ObjectId};
 use chrono::Utc;
 use mongodb::Client;
 use oauth2::AuthorizationCode;
-use oauth2::CsrfToken;
 use std::sync::Arc;
 
-use crate::models::account::User;
+use crate::models::account::{User, UserRole};
 use crate::models::google_auth::GoogleAuthCallbackParams;
 use crate::routes::account::auth::generate_token;
 use crate::services::google_auth_service::{
@@ -78,7 +77,7 @@ pub async fn google_auth_callback(
             }
 
             // Generate JWT token
-            match generate_token(&existing_user.email, existing_user.id.unwrap()) {
+            match generate_token(&existing_user.email, existing_user.id.unwrap(), existing_user.role.as_ref()) {
                 Ok(token) => {
                     let frontend_url = std::env::var("FRONTEND_URL")
                         .unwrap_or("http://localhost:3000".to_string());
@@ -106,7 +105,9 @@ pub async fn google_auth_callback(
                 last_signin: Some(now),
                 last_signin_ip: None,
                 failed_signins: Some(0),
+                role: Some(UserRole::User),
                 notification: None,
+                profile_picture: None,
                 created_at: Some(now),
                 updated_at: Some(now),
             };
@@ -116,10 +117,12 @@ pub async fn google_auth_callback(
                     let user_id = result.inserted_id.as_object_id().unwrap();
 
                     // Generate JWT token
-                    match generate_token(&new_user.email, user_id) {
+                    match generate_token(&new_user.email, user_id, new_user.role.as_ref()) {
                         Ok(token) => {
                             // Redirect to frontend with token
-                            let redirect_url = format!("/?token={}", token);
+                            let frontend_url = std::env::var("FRONTEND_URL")
+                                .unwrap_or("http://localhost:3000".to_string());
+                            let redirect_url = format!("{}/?token={}", frontend_url, token);
                             HttpResponse::Found()
                                 .insert_header((header::LOCATION, redirect_url))
                                 .finish()
