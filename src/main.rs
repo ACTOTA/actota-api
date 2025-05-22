@@ -302,7 +302,36 @@ async fn main() -> std::io::Result<()> {
                                 "/{id}/update-customer-id",
                                 web::post()
                                     .to(routes::account::payment_methods_update::update_customer_id),
+                            )
+                            .route(
+                                "/{id}/profile-picture",
+                                web::post()
+                                    .to(routes::account::account_info::upload_profile_pic),
                             ),
+                    )
+                    // Admin routes
+                    .service(
+                        web::scope("/admin")
+                            .wrap(middleware::role_auth::RequireRole::new(models::account::UserRole::Admin))
+                            .wrap(middleware::auth::AuthMiddleware)
+                            .service(
+                                web::scope("/users")
+                                    .route("/users", web::get().to(routes::account::role_management::list_users_with_roles))
+                                    .route("/users/{id}/role", web::put().to(routes::account::role_management::update_user_role))
+                            )
+                            .service(
+                                web::scope("/itineraries")
+                                    .route(
+                                        "/featured/add",
+                                        web::post().to(routes::featured_vacation::add),
+                                    )
+                                    .service(
+                                        web::scope("/{id}")
+                                            .route("/images",
+                                                web::put().to(routes::featured_vacation::update_itinerary_images)
+                                            )
+                                    )
+                            )
                     )
                     .service(
                         web::scope("")
@@ -340,10 +369,7 @@ async fn main() -> std::io::Result<()> {
                                     .service(
                                         web::scope("")
                                             .wrap(middleware::auth::AuthMiddleware)
-                                            .route(
-                                                "/featured/add",
-                                                web::post().to(routes::featured_vacation::add),
-                                            )
+                                    
                                             .route(
                                                 "/find",
                                                 web::post().to(routes::dream_vacation::find),
