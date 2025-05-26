@@ -307,6 +307,12 @@ async fn main() -> std::io::Result<()> {
                                 "/{id}/profile-picture",
                                 web::post()
                                     .to(routes::account::account_info::upload_profile_pic),
+                            )
+                            .service(
+                                web::scope("/{id}/email-verifications")
+                                    .route("", web::post().to(routes::account::email_verification::create_user_email_verification))
+                                    .route("", web::get().to(routes::account::email_verification::get_user_email_verifications))
+                                    .route("/{verification_id}", web::put().to(routes::account::email_verification::verify_user_email_code))
                             ),
                     )
                     // Admin routes
@@ -346,6 +352,12 @@ async fn main() -> std::io::Result<()> {
                                         web::put()
                                             .to(routes::account::auth::newsletter_unsubscribe),
                                     ),
+                            )
+                            // RESTful email verification for signup
+                            .service(
+                                web::scope("/email-verifications")
+                                    .route("", web::post().to(routes::account::email_verification::create_signup_email_verification))
+                                    .route("/{id}", web::put().to(routes::account::email_verification::verify_signup_email_code))
                             )
                             .route("/locations", web::get().to(routes::location::get_locations))
                             .route("/lodging", web::get().to(routes::lodging::get_lodging))
