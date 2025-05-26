@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::env;
 use mongodb::{Client, Collection, bson::{doc, oid::ObjectId, DateTime}};
 use rand::{distributions::Alphanumeric, Rng};
+use crate::models::bookings::BookingDetails;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SendGridEmail {
@@ -396,5 +397,161 @@ impl EmailService {
             .map_err(|e| EmailError::DatabaseError(e.to_string()))?;
 
         Ok(result.deleted_count)
+    }
+
+    pub async fn send_booking_confirmation_email(
+        &self,
+        user_email: &str,
+        user_name: &str,
+        booking: &BookingDetails,
+        itinerary_name: &str,
+        amount_charged: f64,
+        currency: &str,
+        transaction_id: &str,
+    ) -> Result<(), EmailError> {
+        let from_email = env::var("FROM_EMAIL")
+            .unwrap_or_else(|_| "noreply@actota.com".to_string());
+
+        let frontend_url = env::var("FRONTEND_URL")
+            .unwrap_or_else(|_| "https://actota.com".to_string());
+
+        let booking_url = format!(
+            "{}/account/bookings/{}",
+            frontend_url,
+            booking.id.unwrap().to_hex()
+        );
+
+        let subject = format!("Booking Confirmed: {}", itinerary_name);
+
+        // Format dates
+        let arrival_date = booking.arrival_datetime.try_to_rfc3339_string()
+            .unwrap_or_else(|_| "Date unavailable".to_string());
+        let departure_date = booking.departure_datetime.try_to_rfc3339_string()
+            .unwrap_or_else(|_| "Date unavailable".to_string());
+
+        let html_content = format!(
+            r#"
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="utf-8">
+                <title>Booking Confirmation</title>
+                <style>
+                    body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; }}
+                    .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
+                    .content {{ padding: 30px; background: #f9f9f9; }}
+                    .booking-details {{ background: white; padding: 20px; border-radius: 8px; margin: 20px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
+                    .detail-row {{ display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #eee; }}
+                    .detail-label {{ font-weight: bold; color: #666; }}
+                    .amount {{ font-size: 24px; color: #27ae60; font-weight: bold; }}
+                    .cta-button {{ 
+                        display: inline-block; 
+                        background: #667eea; 
+                        color: white; 
+                        padding: 15px 30px; 
+                        text-decoration: none; 
+                        border-radius: 5px; 
+                        font-weight: bold;
+                        margin: 20px 0;
+                    }}
+                    .footer {{ background: #333; color: white; padding: 20px; text-align: center; border-radius: 0 0 10px 10px; }}
+                    .transaction-id {{ font-family: monospace; background: #f0f0f0; padding: 5px; border-radius: 3px; }}
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <h1>🎉 Booking Confirmed!</h1>
+                    <p>Your adventure awaits, {}!</p>
+                </div>
+                
+                <div class="content">
+                    <p>Great news! Your booking has been confirmed and your payment has been processed successfully.</p>
+                    
+                    <div class="booking-details">
+                        <h3>Booking Details</h3>
+                        
+                        <div class="detail-row">
+                            <span class="detail-label">Trip:</span>
+                            <span>{}</span>
+                        </div>
+                        
+                        <div class="detail-row">
+                            <span class="detail-label">Arrival:</span>
+                            <span>{}</span>
+                        </div>
+                        
+                        <div class="detail-row">
+                            <span class="detail-label">Departure:</span>
+                            <span>{}</span>
+                        </div>
+                        
+                        <div class="detail-row">
+                            <span class="detail-label">Booking ID:</span>
+                            <span class="transaction-id">{}</span>
+                        </div>
+                        
+                        <div class="detail-row">
+                            <span class="detail-label">Status:</span>
+                            <span style="color: #27ae60; font-weight: bold;">✅ Confirmed</span>
+                        </div>
+                    </div>
+                    
+                    <div class="booking-details">
+                        <h3>Payment Information</h3>
+                        
+                        <div class="detail-row">
+                            <span class="detail-label">Amount Charged:</span>
+                            <span class="amount">{} {}</span>
+                        </div>
+                        
+                        <div class="detail-row">
+                            <span class="detail-label">Transaction ID:</span>
+                            <span class="transaction-id">{}</span>
+                        </div>
+                        
+                        <div class="detail-row">
+                            <span class="detail-label">Payment Status:</span>
+                            <span style="color: #27ae60; font-weight: bold;">✅ Successful</span>
+                        </div>
+                    </div>
+                    
+                    <div style="text-align: center;">
+                        <a href="{}" class="cta-button">View Full Booking Details</a>
+                    </div>
+                    
+                    <p><strong>What's Next?</strong></p>
+                    <ul>
+                        <li>Save this confirmation email for your records</li>
+                        <li>Check your booking details anytime in your account</li>
+                        <li>Contact us if you need to make any changes</li>
+                        <li>Get ready for an amazing experience!</li>
+                    </ul>
+                    
+                    <p>If you have any questions about your booking, please don't hesitate to contact our support team.</p>
+                </div>
+                
+                <div class="footer">
+                    <p><strong>ACTOTA</strong><br>
+                    Making travel dreams come true</p>
+                    <p style="font-size: 12px; color: #ccc;">
+                        This is a confirmation email for your booking. Please keep this for your records.
+                    </p>
+                </div>
+            </body>
+            </html>
+            "#,
+            user_name,
+            itinerary_name,
+            arrival_date,
+            departure_date,
+            booking.id.unwrap().to_hex(),
+            amount_charged,
+            currency.to_uppercase(),
+            transaction_id,
+            booking_url
+        );
+
+        self.send_html_email(user_email, &from_email, &subject, &html_content)
+            .await
     }
 }

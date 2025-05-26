@@ -3,7 +3,9 @@ use crate::{
     models::{
         bookings::{BookingDetails, BookingInput, BookingWithPaymentInput},
         itinerary::base::FeaturedVacation,
+        account::User,
     },
+    services::account_service::EmailService,
 };
 use actix_web::{web, HttpResponse, Responder};
 use bson::{doc, oid::ObjectId, DateTime};
@@ -415,8 +417,9 @@ pub async fn add_booking_with_payment(
                                 "pending_payment"
                             };
 
+                            let booking_object_id = insert_result.inserted_id.as_object_id().unwrap();
                             let update_filter = doc! {
-                                "_id": insert_result.inserted_id
+                                "_id": booking_object_id
                             };
 
                             let update = doc! {
@@ -429,6 +432,53 @@ pub async fn add_booking_with_payment(
                             // Update booking with payment status
                             match collection.update_one(update_filter, update).await {
                                 Ok(_) => {
+                                    // If payment succeeded, send confirmation email
+                                    if update_status == "confirmed" {
+                                        // Get user details for email
+                                        let users_collection: mongodb::Collection<User> = 
+                                            client.database("Account").collection("Users");
+                                        
+                                        if let Ok(Some(user)) = users_collection.find_one(doc! {
+                                            "_id": ObjectId::parse_str(&claims.user_id).unwrap()
+                                        }).await {
+                                            // Get itinerary details
+                                            if let Ok(Some(itinerary)) = itinerary.find_one(doc! {
+                                                "_id": ObjectId::parse_str(&itinerary_id).unwrap()
+                                            }).await {
+                                                // Initialize email service and send confirmation
+                                                if let Ok(email_service) = EmailService::new() {
+                                                    let amount = captured_intent.amount as f64 / 100.0; // Convert cents to dollars
+                                                    let currency = captured_intent.currency.to_string();
+                                                    
+                                                    // Create updated booking with ID for email
+                                                    let mut booking_for_email = booking.clone();
+                                                    booking_for_email.id = Some(booking_object_id);
+                                                    
+                                                    let user_name = user.first_name
+                                                        .map(|first| {
+                                                            user.last_name
+                                                                .map(|last| format!("{} {}", first, last))
+                                                                .unwrap_or(first)
+                                                        })
+                                                        .unwrap_or_else(|| "Valued Customer".to_string());
+                                                    
+                                                    if let Err(e) = email_service.send_booking_confirmation_email(
+                                                        &user.email,
+                                                        &user_name,
+                                                        &booking_for_email,
+                                                        &itinerary.trip_name,
+                                                        amount,
+                                                        &currency,
+                                                        &payment_intent_id
+                                                    ).await {
+                                                        eprintln!("Failed to send booking confirmation email: {:?}", e);
+                                                        // Don't fail the booking if email fails
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    
                                     // Return success with all the details
                                     return HttpResponse::Ok().json(serde_json::json!({
                                         "success": true,
