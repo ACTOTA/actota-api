@@ -265,6 +265,10 @@ async fn main() -> std::io::Result<()> {
                                 web::post().to(routes::account::bookings::add_booking_with_payment),
                             )
                             .route(
+                                "/{id}/bookings/{booking_id}/cancel",
+                                web::post().to(routes::account::bookings::cancel_booking_with_refund),
+                            )
+                            .route(
                                 "/{id}/payment-methods",
                                 web::get()
                                     .to(routes::account::payment_methods::get_payment_methods),

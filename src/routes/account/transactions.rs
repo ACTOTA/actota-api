@@ -4,19 +4,29 @@ use actix_web::{web, HttpResponse, Responder};
 use bson::{doc, oid::ObjectId};
 use futures::TryStreamExt;
 use serde::{Deserialize, Serialize};
-use stripe::{Charge, CustomerId, ListCharges, PaymentIntent};
+use stripe::{Charge, CustomerId, ListCharges, ListRefunds, Refund};
 
 use crate::{
     middleware::auth::Claims,
     models::{account::User, bookings::BookingDetails},
 };
 
-// Custom struct to wrap Stripe charge with booking_id
+// Unified transaction type that can be either a charge or refund
 #[derive(Debug, Serialize, Deserialize, Clone)]
-struct TransactionWithBooking {
-    #[serde(flatten)]
-    charge: Charge,
-    booking_id: String,
+#[serde(tag = "transaction_type")]
+pub enum TransactionWithBooking {
+    #[serde(rename = "charge")]
+    Charge {
+        #[serde(flatten)]
+        charge: Charge,
+        booking_id: String,
+    },
+    #[serde(rename = "refund")]
+    Refund {
+        #[serde(flatten)]
+        refund: Refund,
+        booking_id: String,
+    },
 }
 
 // Custom response that mimics Stripe's List response but with our custom transaction type
@@ -74,8 +84,12 @@ pub async fn get_transactions(
 
                 let client = stripe_data.into_inner();
 
-                match stripe::Charge::list(&client, &list_charges).await {
-                    Ok(charges) => {
+                // Fetch both charges and refunds
+                let charges_result = stripe::Charge::list(&client, &list_charges).await;
+                let refunds_result = stripe::Refund::list(&client, &ListRefunds::new()).await;
+
+                match (charges_result, refunds_result) {
+                    (Ok(charges), Ok(refunds)) => {
                         // Get the user's bookings to filter transactions
                         let bookings_collection: mongodb::Collection<BookingDetails> =
                             mongodb_client.database("Account").collection("Bookings");
@@ -90,18 +104,9 @@ pub async fn get_transactions(
 
                                 match bookings {
                                     Ok(bookings) => {
-                                        // Extract transaction_ids from bookings
-                                        let booking_transaction_ids: Vec<String> = bookings
-                                            .iter()
-                                            .filter_map(|booking| booking.transaction_id.clone())
-                                            .collect();
-
-                                        // println!("Charges: {:?}", charges.data.iter());
-
-                                        // Transform charges into transactions with booking IDs
                                         let mut transactions_with_bookings = Vec::new();
 
-                                        // For each charge, find the matching booking and include its ID
+                                        // Process charges
                                         for charge in charges.data.iter() {
                                             let mut transaction_id = None;
 
@@ -129,14 +134,14 @@ pub async fn get_transactions(
                                                         .as_ref()
                                                         .map_or(false, |id| id == &trans_id)
                                                 }) {
-                                                    // Create transaction with booking ID
+                                                    // Create charge transaction with booking ID
                                                     let booking_id = booking.id.map_or_else(
                                                         || "unknown".to_string(),
                                                         |id| id.to_string(),
                                                     );
 
                                                     transactions_with_bookings.push(
-                                                        TransactionWithBooking {
+                                                        TransactionWithBooking::Charge {
                                                             charge: charge.clone(),
                                                             booking_id,
                                                         },
@@ -145,11 +150,70 @@ pub async fn get_transactions(
                                             }
                                         }
 
+                                        // Process refunds
+                                        for refund in refunds.data.iter() {
+                                            // Match refund to booking using payment_intent or charge ID
+                                            let mut refund_transaction_id = None;
+
+                                            // Try to get payment intent ID from refund
+                                            if let Some(payment_intent) = &refund.payment_intent {
+                                                refund_transaction_id = match payment_intent {
+                                                    stripe::Expandable::Id(id) => Some(id.to_string()),
+                                                    stripe::Expandable::Object(intent) => Some(intent.id.to_string()),
+                                                };
+                                            }
+
+                                            // Fall back to charge ID if available
+                                            if refund_transaction_id.is_none() {
+                                                if let Some(charge) = &refund.charge {
+                                                    refund_transaction_id = match charge {
+                                                        stripe::Expandable::Id(id) => Some(id.to_string()),
+                                                        stripe::Expandable::Object(charge_obj) => Some(charge_obj.id.to_string()),
+                                                    };
+                                                }
+                                            }
+
+                                            if let Some(trans_id) = refund_transaction_id {
+                                                // Find matching booking by transaction_id or refund_id
+                                                if let Some(booking) = bookings.iter().find(|b| {
+                                                    // Check if booking has this transaction_id or refund_id
+                                                    b.transaction_id.as_ref().map_or(false, |id| id == &trans_id) ||
+                                                    // Check if this booking has been refunded (you might need to add a refund_id field to BookingDetails)
+                                                    b.status == "refunded"
+                                                }) {
+                                                    let booking_id = booking.id.map_or_else(
+                                                        || "unknown".to_string(),
+                                                        |id| id.to_string(),
+                                                    );
+
+                                                    transactions_with_bookings.push(
+                                                        TransactionWithBooking::Refund {
+                                                            refund: refund.clone(),
+                                                            booking_id,
+                                                        },
+                                                    );
+                                                }
+                                            }
+                                        }
+
+                                        // Sort transactions by created date (newest first)
+                                        transactions_with_bookings.sort_by(|a, b| {
+                                            let a_created = match a {
+                                                TransactionWithBooking::Charge { charge, .. } => charge.created,
+                                                TransactionWithBooking::Refund { refund, .. } => refund.created,
+                                            };
+                                            let b_created = match b {
+                                                TransactionWithBooking::Charge { charge, .. } => charge.created,
+                                                TransactionWithBooking::Refund { refund, .. } => refund.created,
+                                            };
+                                            b_created.cmp(&a_created) // Descending order (newest first)
+                                        });
+
                                         // Create custom response with our transactions
                                         let transactions_response = TransactionsWithBookingIds {
-                                            object: "list".to_string(), // Set a constant value as "list" since this is a list of charges
+                                            object: "list".to_string(),
                                             url: charges.url.clone(),
-                                            has_more: charges.has_more,
+                                            has_more: charges.has_more || refunds.has_more,
                                             data: transactions_with_bookings,
                                         };
 
@@ -169,9 +233,13 @@ pub async fn get_transactions(
                             }
                         }
                     }
-                    Err(e) => {
+                    (Err(e), _) => {
                         eprintln!("Error listing charges: {:?}", e);
                         HttpResponse::InternalServerError().body("Failed to list charges")
+                    }
+                    (_, Err(e)) => {
+                        eprintln!("Error listing refunds: {:?}", e);
+                        HttpResponse::InternalServerError().body("Failed to list refunds")
                     }
                 }
             } else {
