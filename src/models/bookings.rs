@@ -1,8 +1,8 @@
 use bson::DateTime;
+use chrono::{TimeZone, Utc};
 use mongodb::bson::oid::ObjectId;
-use serde::{Deserialize, Serialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::str::FromStr;
-use chrono::{Utc, TimeZone};
 
 // A flexible date parser that attempts to parse various date formats
 fn flexible_date_parser<'de, D>(deserializer: D) -> Result<DateTime, D::Error>
@@ -26,12 +26,12 @@ where
 
     // Try with different formats using chrono
     let formats = [
-        "%Y-%m-%dT%H:%M:%S%.fZ",       // ISO 8601 with fractional seconds
-        "%Y-%m-%dT%H:%M:%SZ",          // ISO 8601 without fractional seconds
-        "%Y-%m-%dT%H:%M:%S%.f%:z",     // ISO 8601 with timezone offset
-        "%Y-%m-%dT%H:%M:%S%:z",        // ISO 8601 with timezone offset, no fractional seconds
-        "%Y-%m-%d %H:%M:%S",           // Simple datetime format
-        "%Y-%m-%d",                    // Just date
+        "%Y-%m-%dT%H:%M:%S%.fZ",   // ISO 8601 with fractional seconds
+        "%Y-%m-%dT%H:%M:%SZ",      // ISO 8601 without fractional seconds
+        "%Y-%m-%dT%H:%M:%S%.f%:z", // ISO 8601 with timezone offset
+        "%Y-%m-%dT%H:%M:%S%:z",    // ISO 8601 with timezone offset, no fractional seconds
+        "%Y-%m-%d %H:%M:%S",       // Simple datetime format
+        "%Y-%m-%d",                // Just date
     ];
 
     for format in formats {
@@ -52,10 +52,14 @@ where
     Err(Error::custom(format!("Could not parse date: {}", date_str)))
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct BookingInput {
+    #[serde(deserialize_with = "flexible_date_parser")]
     pub arrival_datetime: DateTime,
+    
+    #[serde(deserialize_with = "flexible_date_parser")]
     pub departure_datetime: DateTime,
+    
     pub customer_id: Option<String>,
     pub transaction_id: Option<String>,
 }
