@@ -1,7 +1,7 @@
 use crate::{
     middleware::auth::Claims,
     models::{
-        bookings::{BookingDetails, BookingInput, BookingWithPaymentInput},
+        bookings::{BookingDetails, BookingInput, BookingWithPaymentInput, PaymentStatus},
         itinerary::base::FeaturedVacation,
         account::User,
     },
@@ -12,7 +12,7 @@ use bson::{doc, oid::ObjectId, DateTime};
 use futures::TryStreamExt;
 use mongodb::Client;
 use std::{str::FromStr, sync::Arc};
-use stripe::CapturePaymentIntent;
+use stripe::{CancelPaymentIntent, CapturePaymentIntent};
 
 pub async fn add_booking(
     data: web::Data<Arc<Client>>,
@@ -46,6 +46,8 @@ pub async fn add_booking(
 
     let arrival_datetime = input.arrival_datetime;
     let departure_datetime = input.departure_datetime;
+    let customer_id = input.customer_id.clone();
+    let transaction_id = input.transaction_id.clone();
 
     let collection: mongodb::Collection<BookingDetails> =
         client.database("Account").collection("Bookings");
@@ -57,9 +59,9 @@ pub async fn add_booking(
         id: None,
         user_id: ObjectId::parse_str(&claims.user_id).unwrap(),
         itinerary_id: ObjectId::parse_str(&itinerary_id).unwrap(),
-        customer_id: input.customer_id,
-        transaction_id: input.transaction_id,
-        status: "ongoing".to_string(),
+        customer_id,
+        transaction_id: transaction_id.clone(),
+        status: PaymentStatus::Ongoing,
         arrival_datetime,
         departure_datetime,
         bookings: None,
@@ -74,11 +76,60 @@ pub async fn add_booking(
                 .as_object_id()
                 .unwrap()
                 .to_string();
+            let booking_object_id = insert_result.inserted_id.as_object_id().unwrap();
+            
+            // Send booking confirmation email
+            // Get user details for email
+            let users_collection: mongodb::Collection<User> = 
+                client.database("Account").collection("Users");
+            
+            if let Ok(Some(user)) = users_collection.find_one(doc! {
+                "_id": ObjectId::parse_str(&claims.user_id).unwrap()
+            }).await {
+                // Get itinerary details
+                if let Ok(Some(itinerary)) = itinerary.find_one(doc! {
+                    "_id": ObjectId::parse_str(&itinerary_id).unwrap()
+                }).await {
+                    // Initialize email service and send confirmation
+                    if let Ok(email_service) = EmailService::new() {
+                        // Create updated booking with ID for email
+                        let mut booking_for_email = booking.clone();
+                        booking_for_email.id = Some(booking_object_id);
+                        
+                        let user_name = user.first_name
+                            .map(|first| {
+                                user.last_name
+                                    .map(|last| format!("{} {}", first, last))
+                                    .unwrap_or(first)
+                            })
+                            .unwrap_or_else(|| "Valued Customer".to_string());
+                        
+                        // Default payment info for basic bookings without payment
+                        let amount = 0.0;
+                        let currency = "USD";
+                        let default_tx_id = "N/A".to_string();
+                        let transaction_id_for_email = transaction_id.as_ref().unwrap_or(&default_tx_id);
+                        
+                        if let Err(e) = email_service.send_booking_confirmation_email(
+                            &user.email,
+                            &user_name,
+                            &booking_for_email,
+                            &itinerary.trip_name,
+                            amount,
+                            currency,
+                            transaction_id_for_email
+                        ).await {
+                            eprintln!("Failed to send booking confirmation email: {:?}", e);
+                            // Don't fail the booking if email fails
+                        }
+                    }
+                }
+            }
             
             return HttpResponse::Ok().json(serde_json::json!({
                 "success": true,
                 "booking_id": booking_id,
-                "status": "ongoing",
+                "status": &booking.status,
                 "message": "Booking created successfully"
             }));
         }
@@ -371,7 +422,7 @@ pub async fn add_booking_with_payment(
         itinerary_id: ObjectId::parse_str(&itinerary_id).unwrap(),
         customer_id: Some(input.customer_id),
         transaction_id: Some(payment_intent_id.clone()),
-        status: "pending".to_string(), // Start with pending status
+        status: PaymentStatus::Pending, // Start with pending status
         arrival_datetime: input.arrival_datetime,
         departure_datetime: input.departure_datetime,
         bookings: None,
@@ -400,9 +451,9 @@ pub async fn add_booking_with_payment(
                             // 5. Update booking status based on payment result
                             let payment_status = captured_intent.status.to_string();
                             let update_status = if payment_status == "succeeded" {
-                                "confirmed"
+                                PaymentStatus::Confirmed
                             } else {
-                                "pending_payment"
+                                PaymentStatus::PendingPayment
                             };
 
                             let booking_object_id = insert_result.inserted_id.as_object_id().unwrap();
@@ -412,7 +463,7 @@ pub async fn add_booking_with_payment(
 
                             let update = doc! {
                                 "$set": {
-                                    "status": update_status,
+                                    "status": bson::to_bson(&update_status).unwrap(),
                                     "updated_at": DateTime::now()
                                 }
                             };
@@ -421,7 +472,7 @@ pub async fn add_booking_with_payment(
                             match collection.update_one(update_filter, update).await {
                                 Ok(_) => {
                                     // If payment succeeded, send confirmation email
-                                    if update_status == "confirmed" {
+                                    if update_status == PaymentStatus::Confirmed {
                                         // Get user details for email
                                         let users_collection: mongodb::Collection<User> = 
                                             client.database("Account").collection("Users");
@@ -472,7 +523,7 @@ pub async fn add_booking_with_payment(
                                         "success": true,
                                         "booking_id": booking_id,
                                         "payment_intent": captured_intent,
-                                        "status": update_status
+                                        "status": &update_status
                                     }));
                                 }
                                 Err(update_err) => {
@@ -496,7 +547,7 @@ pub async fn add_booking_with_payment(
 
                             let update = doc! {
                                 "$set": {
-                                    "status": "payment_failed",
+                                    "status": bson::to_bson(&PaymentStatus::PaymentFailed).unwrap(),
                                     "updated_at": DateTime::now()
                                 }
                             };
@@ -558,7 +609,7 @@ pub async fn cancel_booking_with_refund(
     };
 
     // Check if booking is already cancelled
-    if booking.status == "cancelled" || booking.status == "refunded" {
+    if booking.status == PaymentStatus::Cancelled || booking.status == PaymentStatus::Refunded {
         return HttpResponse::BadRequest().json(serde_json::json!({
             "success": false,
             "error": "Booking is already cancelled or refunded"
@@ -572,7 +623,7 @@ pub async fn cancel_booking_with_refund(
             // If no transaction, just cancel the booking
             let update = doc! {
                 "$set": {
-                    "status": "cancelled",
+                    "status": bson::to_bson(&PaymentStatus::Cancelled).unwrap(),
                     "updated_at": DateTime::now()
                 }
             };
@@ -616,22 +667,80 @@ pub async fn cancel_booking_with_refund(
         }
     };
 
-    // Calculate 95% refund (5% cancellation fee)
-    let refund_amount = (payment_intent.amount as f64 * 0.95) as i64;
+    // Check if payment intent was captured or just authorized
+    match payment_intent.status {
+        stripe::PaymentIntentStatus::RequiresCapture => {
+            // Payment was authorized but not captured - we need to cancel instead of refund
+            println!("Payment intent is uncaptured, cancelling instead of refunding");
+            
+            match stripe::PaymentIntent::cancel(
+                stripe_data.as_ref(),
+                &payment_intent.id,
+                stripe::CancelPaymentIntent::default(),
+            )
+            .await
+            {
+                Ok(cancelled_intent) => {
+                    // Update booking status to cancelled
+                    let update = doc! {
+                        "$set": {
+                            "status": bson::to_bson(&PaymentStatus::Cancelled).unwrap(),
+                            "updated_at": DateTime::now()
+                        }
+                    };
 
-    // Create the refund
-    let refund_params = stripe::CreateRefund {
-        payment_intent: Some(payment_intent.id.clone()),
-        amount: Some(refund_amount),
-        ..Default::default()
-    };
+                    match collection.update_one(filter, update).await {
+                        Ok(_) => {
+                            return HttpResponse::Ok().json(serde_json::json!({
+                                "success": true,
+                                "message": "Booking cancelled successfully (payment authorization reversed)",
+                                "booking_id": booking_id,
+                                "payment_intent": {
+                                    "id": cancelled_intent.id.to_string(),
+                                    "status": cancelled_intent.status.to_string(),
+                                    "amount": cancelled_intent.amount
+                                }
+                            }));
+                        }
+                        Err(e) => {
+                            eprintln!("Error updating booking after cancellation: {:?}", e);
+                            return HttpResponse::Ok().json(serde_json::json!({
+                                "success": true,
+                                "warning": "Payment cancelled but failed to update booking status",
+                                "booking_id": booking_id
+                            }));
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Error cancelling payment intent: {:?}", e);
+                    return HttpResponse::InternalServerError().json(serde_json::json!({
+                        "success": false,
+                        "error": format!("Failed to cancel payment: {}", e)
+                    }));
+                }
+            }
+        }
+        stripe::PaymentIntentStatus::Succeeded => {
+            // Payment was captured - proceed with refund
+            println!("Payment intent was captured, processing refund");
+            
+            // Calculate 95% refund (5% cancellation fee)
+            let refund_amount = (payment_intent.amount as f64 * 0.95) as i64;
 
-    match stripe::Refund::create(stripe_data.as_ref(), refund_params).await {
+            // Create the refund
+            let refund_params = stripe::CreateRefund {
+                payment_intent: Some(payment_intent.id.clone()),
+                amount: Some(refund_amount),
+                ..Default::default()
+            };
+
+            match stripe::Refund::create(stripe_data.as_ref(), refund_params).await {
         Ok(refund) => {
             // Update booking status to refunded
             let update = doc! {
                 "$set": {
-                    "status": "refunded",
+                    "status": bson::to_bson(&PaymentStatus::Refunded).unwrap(),
                     "refund_id": refund.id.to_string(),
                     "refund_amount": refund_amount,
                     "updated_at": DateTime::now()
@@ -684,11 +793,22 @@ pub async fn cancel_booking_with_refund(
                 }
             }
         }
-        Err(e) => {
-            eprintln!("Error creating refund: {:?}", e);
-            return HttpResponse::InternalServerError().json(serde_json::json!({
+                Err(e) => {
+                    eprintln!("Error creating refund: {:?}", e);
+                    return HttpResponse::InternalServerError().json(serde_json::json!({
+                        "success": false,
+                        "error": format!("Failed to process refund: {}", e)
+                    }));
+                }
+            }
+        }
+        _ => {
+            // Handle other payment intent statuses
+            eprintln!("Unexpected payment intent status: {:?}", payment_intent.status);
+            return HttpResponse::BadRequest().json(serde_json::json!({
                 "success": false,
-                "error": format!("Failed to process refund: {}", e)
+                "error": format!("Cannot cancel booking with payment status: {:?}", payment_intent.status),
+                "message": "Payment is in an unexpected state. Please contact support."
             }));
         }
     }

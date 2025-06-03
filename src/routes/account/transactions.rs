@@ -8,6 +8,7 @@ use stripe::{Charge, CustomerId, ListCharges, ListRefunds, Refund};
 
 use crate::{
     middleware::auth::Claims,
+    models::bookings::PaymentStatus,
     models::{account::User, bookings::BookingDetails},
 };
 
@@ -179,7 +180,7 @@ pub async fn get_transactions(
                                                     // Check if booking has this transaction_id or refund_id
                                                     b.transaction_id.as_ref().map_or(false, |id| id == &trans_id) ||
                                                     // Check if this booking has been refunded (you might need to add a refund_id field to BookingDetails)
-                                                    b.status == "refunded"
+                                                    b.status == PaymentStatus::Refunded
                                                 }) {
                                                     let booking_id = booking.id.map_or_else(
                                                         || "unknown".to_string(),

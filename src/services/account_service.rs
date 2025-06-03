@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::env;
 use mongodb::{Client, Collection, bson::{doc, oid::ObjectId, DateTime}};
 use rand::{distributions::Alphanumeric, Rng};
+use chrono::{TimeZone, Utc};
 use crate::models::bookings::BookingDetails;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -423,11 +424,66 @@ impl EmailService {
 
         let subject = format!("Booking Confirmed: {}", itinerary_name);
 
-        // Format dates
-        let arrival_date = booking.arrival_datetime.try_to_rfc3339_string()
-            .unwrap_or_else(|_| "Date unavailable".to_string());
-        let departure_date = booking.departure_datetime.try_to_rfc3339_string()
-            .unwrap_or_else(|_| "Date unavailable".to_string());
+        // Format dates in a more readable format
+        let arrival_date = {
+            let millis = booking.arrival_datetime.timestamp_millis();
+            match Utc.timestamp_millis_opt(millis) {
+                chrono::LocalResult::Single(dt) => dt.format("%B %d, %Y at %I:%M %p UTC").to_string(),
+                _ => "Date unavailable".to_string(),
+            }
+        };
+        let departure_date = {
+            let millis = booking.departure_datetime.timestamp_millis();
+            match Utc.timestamp_millis_opt(millis) {
+                chrono::LocalResult::Single(dt) => dt.format("%B %d, %Y at %I:%M %p UTC").to_string(),
+                _ => "Date unavailable".to_string(),
+            }
+        };
+
+        // Create payment section conditionally
+        let payment_section = if amount_charged > 0.0 {
+            format!(
+                r#"
+                <div class="booking-details">
+                    <h3>Payment Information</h3>
+                    
+                    <div class="detail-row">
+                        <span class="detail-label">Amount Charged:</span>
+                        <span class="amount">{:.2} {}</span>
+                    </div>
+                    
+                    <div class="detail-row">
+                        <span class="detail-label">Transaction ID:</span>
+                        <span class="transaction-id">{}</span>
+                    </div>
+                    
+                    <div class="detail-row">
+                        <span class="detail-label">Payment Status:</span>
+                        <span style="color: #27ae60; font-weight: bold;">✅ Successful</span>
+                    </div>
+                </div>
+                "#,
+                amount_charged,
+                currency.to_uppercase(),
+                transaction_id
+            )
+        } else {
+            r#"
+            <div class="booking-details">
+                <h3>Booking Information</h3>
+                
+                <div class="detail-row">
+                    <span class="detail-label">Booking Type:</span>
+                    <span style="color: #667eea; font-weight: bold;">Reservation Confirmed</span>
+                </div>
+                
+                <div class="detail-row">
+                    <span class="detail-label">Payment:</span>
+                    <span style="color: #666;">No payment required for this booking</span>
+                </div>
+            </div>
+            "#.to_string()
+        };
 
         let html_content = format!(
             r#"
@@ -492,28 +548,11 @@ impl EmailService {
                         
                         <div class="detail-row">
                             <span class="detail-label">Status:</span>
-                            <span style="color: #27ae60; font-weight: bold;">✅ Confirmed</span>
+                            <span style="color: #27ae60; font-weight: bold;">✅ {}</span>
                         </div>
                     </div>
                     
-                    <div class="booking-details">
-                        <h3>Payment Information</h3>
-                        
-                        <div class="detail-row">
-                            <span class="detail-label">Amount Charged:</span>
-                            <span class="amount">{} {}</span>
-                        </div>
-                        
-                        <div class="detail-row">
-                            <span class="detail-label">Transaction ID:</span>
-                            <span class="transaction-id">{}</span>
-                        </div>
-                        
-                        <div class="detail-row">
-                            <span class="detail-label">Payment Status:</span>
-                            <span style="color: #27ae60; font-weight: bold;">✅ Successful</span>
-                        </div>
-                    </div>
+                    {}
                     
                     <div style="text-align: center;">
                         <a href="{}" class="cta-button">View Full Booking Details</a>
@@ -545,9 +584,8 @@ impl EmailService {
             arrival_date,
             departure_date,
             booking.id.unwrap().to_hex(),
-            amount_charged,
-            currency.to_uppercase(),
-            transaction_id,
+            serde_json::to_value(&booking.status).unwrap().as_str().unwrap(),
+            payment_section,
             booking_url
         );
 
