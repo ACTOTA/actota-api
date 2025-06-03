@@ -4,6 +4,45 @@ use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::str::FromStr;
 
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum PaymentStatus {
+    /// Booking created without payment requirement (free bookings or pay-later arrangements)
+    /// The booking is valid and confirmed despite no payment being processed
+    #[serde(rename = "ongoing")]
+    Ongoing,
+    
+    /// Booking created and payment intent initialized but not yet captured
+    /// User has provided payment details but charge hasn't been processed
+    #[serde(rename = "pending")]
+    Pending,
+    
+    /// Payment capture was attempted but is still processing
+    /// Intermediate state between pending and confirmed/failed
+    #[serde(rename = "pending_payment")]
+    PendingPayment,
+    
+    /// Payment successfully captured and booking is financially confirmed
+    /// The user has been charged and the booking is guaranteed
+    #[serde(rename = "confirmed")]
+    Confirmed,
+    
+    /// Booking was cancelled but no payment was ever processed
+    /// No refund needed as user was never charged
+    #[serde(rename = "cancelled")]
+    Cancelled,
+    
+    /// Booking was cancelled after payment was captured
+    /// Refund has been processed back to the user's payment method
+    #[serde(rename = "refunded")]
+    Refunded,
+    
+    /// Payment capture was attempted but failed
+    /// User needs to retry payment or booking will be cancelled
+    #[serde(rename = "payment_failed")]
+    PaymentFailed,
+}
+
 // A flexible date parser that attempts to parse various date formats
 fn flexible_date_parser<'de, D>(deserializer: D) -> Result<DateTime, D::Error>
 where
@@ -90,7 +129,7 @@ pub struct BookingDetails {
     pub transaction_id: Option<String>,
     pub arrival_datetime: DateTime,
     pub departure_datetime: DateTime,
-    pub status: String,
+    pub status: PaymentStatus,
     pub bookings: Option<Vec<SingleBooking>>,
     pub created_at: Option<DateTime>,
     pub updated_at: Option<DateTime>,
