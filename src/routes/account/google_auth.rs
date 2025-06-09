@@ -14,8 +14,12 @@ use crate::services::google_auth_service::{
 
 // Initiate Google OAuth flow
 pub async fn google_auth_init() -> impl Responder {
+    println!("Initiating Google OAuth flow...");
     let client = create_google_oauth_client();
     let (auth_url, csrf_token) = get_google_auth_url(&client);
+
+    println!("Generated auth URL: {}", auth_url);
+    println!("CSRF token: {}", csrf_token.secret());
 
     // In a production app, you should store this CSRF token in a secure session
     // or encrypted cookie to validate in the callback
@@ -31,8 +35,11 @@ pub async fn google_auth_callback(
     data: web::Data<Arc<Client>>,
     query: web::Query<GoogleAuthCallbackParams>,
 ) -> impl Responder {
+    println!("Google OAuth callback received with params: {:?}", query);
+    
     // Validate the callback
     if let Some(error) = &query.error {
+        eprintln!("OAuth error received: {}", error);
         return HttpResponse::BadRequest().body(format!("OAuth error: {}", error));
     }
 
@@ -40,15 +47,27 @@ pub async fn google_auth_callback(
     let code = AuthorizationCode::new(query.code.clone());
 
     // Exchange the authorization code for an access token
+    println!("Exchanging code for token...");
     let access_token = match exchange_code_for_token(&client, code).await {
-        Ok(token) => token,
-        Err(e) => return HttpResponse::InternalServerError().body(format!("Token error: {}", e)),
+        Ok(token) => {
+            println!("Successfully obtained access token");
+            token
+        },
+        Err(e) => {
+            eprintln!("Failed to exchange code for token: {}", e);
+            return HttpResponse::InternalServerError().body(format!("Token error: {}", e))
+        },
     };
 
     // Get user info using the access token
+    println!("Fetching user info from Google...");
     let user_info = match get_google_user_info(&access_token).await {
-        Ok(info) => info,
+        Ok(info) => {
+            println!("Successfully obtained user info: email={}", info.email);
+            info
+        },
         Err(e) => {
+            eprintln!("Failed to get user info: {}", e);
             return HttpResponse::InternalServerError().body(format!("User info error: {}", e))
         }
     };
@@ -123,6 +142,7 @@ pub async fn google_auth_callback(
                             let frontend_url = std::env::var("FRONTEND_URL")
                                 .unwrap_or("http://localhost:3000".to_string());
                             let redirect_url = format!("{}/?token={}", frontend_url, token);
+                            println!("Redirecting to frontend with token: {}", redirect_url);
                             HttpResponse::Found()
                                 .insert_header((header::LOCATION, redirect_url))
                                 .finish()
