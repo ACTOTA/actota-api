@@ -62,7 +62,8 @@ impl FeaturedVacation {
         // 1. Extract all activity and accommodation IDs
         let mut activity_ids = HashSet::new();
         let mut accommodation_ids = HashSet::new();
-        let mut person_cost: f32 = 0.0;
+        // Start with the base person_cost from the document
+        let person_cost: f32 = self.person_cost.unwrap_or(0.0) as f32;
 
         println!("Days.days: {:?}", &self.days.days);
 
@@ -99,8 +100,8 @@ impl FeaturedVacation {
             let activities: Vec<ActivityModel> = cursor.try_collect().await?;
 
             for activity in activities {
-                // Add activity price to person_cost
-                person_cost += activity.price_per_person as f32;
+                // Note: person_cost is already set in the database, so we don't add activity costs here
+                // person_cost += activity.price_per_person as f32;
 
                 if let Some(id) = activity.id {
                     activities_map.insert(id, activity);
@@ -123,10 +124,10 @@ impl FeaturedVacation {
             let accommodations: Vec<AccommodationModel> = cursor.try_collect().await?;
 
             for accommodation in accommodations {
-                // Add accommodation price to person_cost (divide by number of people if applicable)
-                if let Some(price) = accommodation.price_per_night {
-                    person_cost += price as f32;
-                }
+                // Note: person_cost is already set in the database, so we don't add accommodation costs here
+                // if let Some(price) = accommodation.price_per_night {
+                //     person_cost += price as f32;
+                // }
 
                 if let Some(id) = accommodation.id {
                     accommodations_map.insert(id, accommodation);
@@ -134,7 +135,32 @@ impl FeaturedVacation {
             }
         }
 
-        // 4. Populate days with fetched data
+        // 4. Collect all activity IDs that need image fetching
+        let mut activity_image_requests = Vec::new();
+        for activity in activities_map.values() {
+            if let Some(id) = activity.id {
+                activity_image_requests.push(id.to_string());
+            }
+        }
+
+        // 5. Fetch all activity images concurrently
+        let image_futures: Vec<_> = activity_image_requests
+            .into_iter()
+            .map(|activity_id_str| async move {
+                let images = fetch_activity_images(&activity_id_str).await.unwrap_or_default();
+                (activity_id_str, images)
+            })
+            .collect();
+
+        let image_results = futures::future::join_all(image_futures).await;
+        
+        // Create a map of activity_id -> images for quick lookup
+        let mut activity_images_map: HashMap<String, Vec<String>> = HashMap::new();
+        for (activity_id_str, images) in image_results {
+            activity_images_map.insert(activity_id_str, images);
+        }
+
+        // 6. Populate days with fetched data
         let mut populated_days = HashMap::new();
         let mut activities = Vec::new();
 
@@ -158,10 +184,10 @@ impl FeaturedVacation {
                         if let Some(activity) = activities_map.get(&activity_id) {
                             let mut activity_with_images = activity.clone();
 
-                            // Get images from ACTIVITY_BUCKET for this activity
+                            // Get images from the pre-fetched map
                             if let Some(id) = activity.id {
                                 let activity_id_str = id.to_string();
-                                if let Ok(images) = fetch_activity_images(&activity_id_str).await {
+                                if let Some(images) = activity_images_map.get(&activity_id_str) {
                                     if !images.is_empty() {
                                         activity_with_images.images = Some(images.clone());
                                         activity_with_images.primary_image = Some(images[0].clone());
@@ -170,7 +196,7 @@ impl FeaturedVacation {
                             }
 
                             activities.push(ActivitySummary {
-                                time,
+                                time: time.clone(),
                                 label: activity_with_images.title.clone(),
                                 tags: activity_with_images.tags.clone(),
                             });
@@ -257,8 +283,8 @@ impl FeaturedVacation {
                                     amenities: Some(vec!["Information unavailable".to_string()]),
                                     primary_image: None,
                                     images: None,
-                                    created_at: Some(chrono::Utc::now()),
-                                    updated_at: Some(chrono::Utc::now()),
+                                    created_at: Some(mongodb::bson::DateTime::now()),
+                                    updated_at: Some(mongodb::bson::DateTime::now()),
                                 },
                             }
                         }
@@ -271,12 +297,14 @@ impl FeaturedVacation {
             populated_days.insert(day_key, populated_items);
         }
 
-        // 5. Return populated vacation
+        // 7. Return populated vacation
         Ok(PopulatedFeaturedVacation {
             base: self,
             person_cost,
             populated_days,
             activities,
+            match_score: None,
+            score_breakdown: None,
         })
     }
 }
