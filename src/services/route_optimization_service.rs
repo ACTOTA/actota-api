@@ -361,15 +361,71 @@ impl RouteOptimizationService {
         (distance_miles * MINUTES_PER_MILE) as i64
     }
 
-    /// Get coordinates for an activity (placeholder - same as in itinerary_generation_service)
+    /// Get coordinates for an activity based on its address
     fn get_activity_coordinates(&self, activity: &Activity) -> (f64, f64) {
-        let id_string = activity.id.map(|id| id.to_string()).unwrap_or_default();
-        let hash = id_string.chars().map(|c| c as u32).sum::<u32>();
+        // Try to geocode based on the activity's address
+        let city = activity.address.city.to_lowercase();
+        let state = activity.address.state.to_lowercase();
         
-        let lat = 25.0 + ((hash % 2000) as f64 / 100.0);
-        let lon = -125.0 + ((hash % 5000) as f64 / 100.0);
-        
-        (lat, lon)
+        // If we have a valid city and state, use known coordinates
+        if !city.is_empty() && !state.is_empty() {
+            // Common city coordinates (you can expand this)
+            match (city.as_str(), state.as_str()) {
+                ("denver", "co") | ("denver", "colorado") => (39.7392, -104.9903),
+                ("colorado springs", "co") => (38.8339, -104.8214),
+                ("boulder", "co") => (40.0150, -105.2705),
+                ("aspen", "co") => (39.1911, -106.8175),
+                ("vail", "co") => (39.6403, -106.3742),
+                ("fort collins", "co") => (40.5853, -105.0844),
+                ("grand junction", "co") => (39.0639, -108.5506),
+                ("durango", "co") => (37.2753, -107.8801),
+                ("steamboat springs", "co") => (40.4850, -106.8317),
+                ("breckenridge", "co") => (39.4817, -106.0384),
+                ("keystone", "co") => (39.5791, -105.9347),
+                ("telluride", "co") => (37.9375, -107.8123),
+                ("winter park", "co") => (39.8911, -105.7631),
+                ("crested butte", "co") => (38.8697, -106.9878),
+                ("estes park", "co") => (40.3772, -105.5217),
+                ("glenwood springs", "co") => (39.5505, -107.3248),
+                ("pagosa springs", "co") => (37.2694, -107.0098),
+                ("salida", "co") => (38.5347, -106.0001),
+                ("buena vista", "co") => (38.8422, -106.1312),
+                ("leadville", "co") => (39.2508, -106.2925),
+                _ => {
+                    println!("Warning: Unknown city '{}', '{}' - using default Colorado coordinates", city, state);
+                    (39.5501, -105.7821) // Central Colorado
+                }
+            }
+        } else {
+            // If no valid city/state, parse the full address
+            let full_address = format!("{} {} {} {} {}", 
+                activity.address.street, 
+                activity.address.city, 
+                activity.address.state, 
+                activity.address.zip,
+                activity.address.country
+            ).trim().to_lowercase();
+            
+            // Try to extract city from the full address if individual fields are empty
+            if full_address.contains("denver") { (39.7392, -104.9903) }
+            else if full_address.contains("colorado springs") { (38.8339, -104.8214) }
+            else if full_address.contains("boulder") { (40.0150, -105.2705) }
+            else if full_address.contains("aspen") { (39.1911, -106.8175) }
+            else if full_address.contains("vail") { (39.6403, -106.3742) }
+            else if full_address.contains("breckenridge") { (39.4817, -106.0384) }
+            else if full_address.contains("keystone") { (39.5791, -105.9347) }
+            else if full_address.contains("telluride") { (37.9375, -107.8123) }
+            else if full_address.contains("winter park") { (39.8911, -105.7631) }
+            else if full_address.contains("crested butte") { (38.8697, -106.9878) }
+            else if full_address.contains("estes park") { (40.3772, -105.5217) }
+            else if full_address.contains("glenwood springs") { (39.5505, -107.3248) }
+            else if full_address.contains("pagosa springs") { (37.2694, -107.0098) }
+            else if full_address.contains("steamboat springs") { (40.4850, -106.8317) }
+            else {
+                println!("Warning: Could not determine coordinates from address '{}' - using default Colorado coordinates", full_address);
+                (39.5501, -105.7821) // Central Colorado
+            }
+        }
     }
 
     /// Check if activity is likely outdoor (heuristic based on activity types/tags)

@@ -173,6 +173,7 @@ async fn main() -> std::io::Result<()> {
             // Authentication routes
             .service(
                 web::scope("/auth")
+                            // Public auth routes (no authentication required)
                             .route("/signup", web::post().to(routes::account::auth::signup))
                             .route("/signin", web::post().to(routes::account::auth::signin))
                             .route(
@@ -192,10 +193,13 @@ async fn main() -> std::io::Result<()> {
                                 web::get()
                                     .to(routes::account::facebook_auth::facebook_auth_callback),
                             )
-                            .service(web::scope("").wrap(middleware::auth::AuthMiddleware).route(
+                            // Protected auth routes (require authentication)
+                            .route(
                                 "/session",
-                                web::get().to(routes::account::auth::user_session),
-                            )),
+                                web::get()
+                                    .to(routes::account::auth::user_session)
+                                    .wrap(middleware::auth::AuthMiddleware),
+                            ),
             )
             
             // Payment routes (protected)

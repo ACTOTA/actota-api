@@ -373,11 +373,9 @@ pub async fn search_itineraries_endpoint(
                 }
             }
 
-            if !populated_itineraries.is_empty() {
-                HttpResponse::Ok().json(populated_itineraries)
-            } else {
-                HttpResponse::Ok().json(processed_itineraries)
-            }
+            // Return the base itineraries (not populated) to match expected frontend format  
+            // The populated version includes full activity objects which are too verbose for the frontend
+            HttpResponse::Ok().json(processed_itineraries)
         }
         Err(err) => {
             eprintln!("Failed to search/generate itineraries for frontend: {:?}", err);
@@ -488,11 +486,9 @@ pub async fn search_or_generate_endpoint(
                 }
             }
 
-            if !populated_itineraries.is_empty() {
-                HttpResponse::Ok().json(populated_itineraries)
-            } else {
-                HttpResponse::Ok().json(processed_itineraries)
-            }
+            // Return the base itineraries (not populated) to match expected frontend format
+            // The populated version includes full activity objects which are too verbose for the frontend
+            HttpResponse::Ok().json(processed_itineraries)
         }
         Err(err) => {
             eprintln!("Failed to search/generate itineraries: {:?}", err);

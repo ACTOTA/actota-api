@@ -9,12 +9,12 @@ pub struct TimeSlot {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Address {
-    street: String,
-    unit: String,
-    city: String,
-    state: String,
-    zip: String,
-    country: String,
+    pub street: String,
+    pub unit: String,
+    pub city: String,
+    pub state: String,
+    pub zip: String,
+    pub country: String,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]

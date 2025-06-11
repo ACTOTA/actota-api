@@ -10,3 +10,4 @@ pub mod payment;
 pub mod route_optimization_service;
 pub mod search_scoring;
 pub mod stripe;
+pub mod vertex_search_service;
