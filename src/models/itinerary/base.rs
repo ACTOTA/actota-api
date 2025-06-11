@@ -92,6 +92,8 @@ pub struct FeaturedVacation {
     pub updated_at: Option<DateTime>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tag: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub activities: Option<Vec<Activity>>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]

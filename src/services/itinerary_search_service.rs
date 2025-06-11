@@ -1,5 +1,5 @@
 use crate::models::{itinerary::base::FeaturedVacation, search::SearchItinerary};
-use crate::services::itinerary_generation_service::{ItineraryGenerationConfig, ItineraryGenerator};
+use crate::services::itinerary_generation_service::ItineraryGenerator;
 use bson::{doc, Document};
 use futures::TryStreamExt;
 use mongodb::{Client, Collection};
@@ -201,12 +201,25 @@ pub async fn search_or_generate_itineraries(
     }
     
     // Create itinerary generator
-    let generator = ItineraryGenerator::new(client);
+    let generator = ItineraryGenerator::new(client.clone());
     
     // Try to generate a new itinerary
     match generator.generate_itinerary(&search_params).await {
         Ok(generated_itinerary) => {
             println!("Successfully generated new itinerary: {}", generated_itinerary.trip_name);
+            
+            // Save the generated itinerary to the database
+            let collection: Collection<FeaturedVacation> = client.database("Itineraries").collection("Featured");
+            match collection.insert_one(&generated_itinerary).await {
+                Ok(insert_result) => {
+                    println!("Saved generated itinerary to database with ID: {:?}", insert_result.inserted_id);
+                }
+                Err(e) => {
+                    eprintln!("Failed to save generated itinerary to database: {}", e);
+                    // Continue anyway - the itinerary is still useful for this request
+                }
+            }
+            
             results.push(generated_itinerary);
         }
         Err(e) => {
@@ -218,12 +231,12 @@ pub async fn search_or_generate_itineraries(
     Ok(results)
 }
 
-/// Search for itineraries with custom generation config
+/// Search for itineraries with generation fallback (simplified version)
 pub async fn search_or_generate_with_config(
     client: Arc<Client>,
     search_params: SearchItinerary,
     min_results_threshold: usize,
-    generation_config: ItineraryGenerationConfig,
+    _generation_config: (), // Removed config, kept for API compatibility
 ) -> Result<Vec<FeaturedVacation>, Box<dyn std::error::Error>> {
     // First, try to find existing itineraries
     let mut results = search_itineraries(client.clone(), search_params.clone()).await?;
@@ -239,13 +252,26 @@ pub async fn search_or_generate_with_config(
         return Ok(results);
     }
     
-    // Create itinerary generator with custom config
-    let generator = ItineraryGenerator::with_config(client, generation_config);
+    // Create itinerary generator
+    let generator = ItineraryGenerator::new(client.clone());
     
     // Try to generate a new itinerary
     match generator.generate_itinerary(&search_params).await {
         Ok(generated_itinerary) => {
             println!("Successfully generated new itinerary: {}", generated_itinerary.trip_name);
+            
+            // Save the generated itinerary to the database
+            let collection: Collection<FeaturedVacation> = client.database("Itineraries").collection("Featured");
+            match collection.insert_one(&generated_itinerary).await {
+                Ok(insert_result) => {
+                    println!("Saved generated itinerary to database with ID: {:?}", insert_result.inserted_id);
+                }
+                Err(e) => {
+                    eprintln!("Failed to save generated itinerary to database: {}", e);
+                    // Continue anyway - the itinerary is still useful for this request
+                }
+            }
+            
             results.push(generated_itinerary);
         }
         Err(e) => {
