@@ -1,35 +1,35 @@
 use mongodb::bson::{oid::ObjectId, DateTime};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct TimeSlot {
     start: String,
     end: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Address {
-    street: String,
-    unit: String,
-    city: String,
-    state: String,
-    zip: String,
-    country: String,
+    pub street: String,
+    pub unit: String,
+    pub city: String,
+    pub state: String,
+    pub zip: String,
+    pub country: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Capacity {
     pub minimum: u16,
     pub maximum: u16,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct BlackoutDateRange {
     start: i64,
     end: i64,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Activity {
     #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
     pub id: Option<ObjectId>,
@@ -52,6 +52,8 @@ pub struct Activity {
     pub height_requiremnt: Option<u8>,
     pub blackout_date_ranges: Option<Vec<BlackoutDateRange>>,
     pub capacity: Capacity,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub created_at: Option<DateTime>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub updated_at: Option<DateTime>,
 }
