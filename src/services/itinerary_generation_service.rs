@@ -4,7 +4,7 @@ use crate::models::{
     search::SearchItinerary,
 };
 use crate::services::vertex_search_service::VertexSearchService;
-use chrono::{Duration, NaiveTime};
+use chrono::{Datelike, Duration, NaiveTime};
 use mongodb::{bson::oid::ObjectId, Client, Collection};
 use std::{collections::HashMap, sync::Arc};
 
@@ -278,12 +278,27 @@ impl ItineraryGenerator {
             "%m/%d/%Y",
         ];
         
+        // Try standard formats first
         for format in formats {
             if let Ok(datetime) = chrono::NaiveDateTime::parse_from_str(datetime_str.trim(), format) {
                 return Ok(datetime);
             }
             if let Ok(date) = chrono::NaiveDate::parse_from_str(datetime_str.trim(), format) {
                 return Ok(date.and_hms_opt(0, 0, 0).unwrap());
+            }
+        }
+        
+        // Handle formats without year (assume current year)
+        let current_year = chrono::Utc::now().year();
+        let formats_with_year = vec![
+            format!("%b %dT%H:%M:%S {}", current_year),  // Jul 8T09:00:00 format with year
+            format!("%b %d %H:%M:%S {}", current_year),  // Jul 8 09:00:00 format with year
+        ];
+        
+        for format_with_year in formats_with_year {
+            let datetime_with_year = format!("{} {}", datetime_str.trim(), current_year);
+            if let Ok(datetime) = chrono::NaiveDateTime::parse_from_str(&datetime_with_year, &format_with_year) {
+                return Ok(datetime);
             }
         }
         
