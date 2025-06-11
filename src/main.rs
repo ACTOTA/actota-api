@@ -168,12 +168,12 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(client.clone()))
             .app_data(web::Data::new(stripe_config.clone()))
             .route("/stripe/webhook", web::post().to(handle_stripe_webhook))
-            // Add API routes
+            // API Routes - organized by domain
+            
+            // Authentication routes
             .service(
-                web::scope("/api")
-                    // Public routes
-                    .service(
-                        web::scope("/auth")
+                web::scope("/auth")
+                            // Public auth routes (no authentication required)
                             .route("/signup", web::post().to(routes::account::auth::signup))
                             .route("/signin", web::post().to(routes::account::auth::signin))
                             .route(
@@ -193,13 +193,18 @@ async fn main() -> std::io::Result<()> {
                                 web::get()
                                     .to(routes::account::facebook_auth::facebook_auth_callback),
                             )
-                            .service(web::scope("").wrap(middleware::auth::AuthMiddleware).route(
+                            // Protected auth routes (require authentication)
+                            .route(
                                 "/session",
-                                web::get().to(routes::account::auth::user_session),
-                            )),
-                    )
-                    .service(
-                        web::scope("payment")
+                                web::get()
+                                    .to(routes::account::auth::user_session)
+                                    .wrap(middleware::auth::AuthMiddleware),
+                            ),
+            )
+            
+            // Payment routes (protected)
+            .service(
+                web::scope("/payment")
                             .wrap(middleware::auth::AuthMiddleware)
                             .route(
                                 "/payment-intent",
@@ -209,10 +214,11 @@ async fn main() -> std::io::Result<()> {
                                 "/capture-payment",
                                 web::post().to(routes::payment::capture_payment),
                             ),
-                    )
-                    .service(
-                        // Protected routes
-                        web::scope("/account")
+            )
+            
+            // Account routes (protected)
+            .service(
+                web::scope("/account")
                             .wrap(middleware::auth::AuthMiddleware)
                             .route(
                                 "/{id}",
@@ -265,6 +271,10 @@ async fn main() -> std::io::Result<()> {
                                 web::post().to(routes::account::bookings::add_booking_with_payment),
                             )
                             .route(
+                                "/{id}/bookings/{booking_id}/cancel",
+                                web::post().to(routes::account::bookings::cancel_booking_with_refund),
+                            )
+                            .route(
                                 "/{id}/payment-methods",
                                 web::get()
                                     .to(routes::account::payment_methods::get_payment_methods),
@@ -307,11 +317,18 @@ async fn main() -> std::io::Result<()> {
                                 "/{id}/profile-picture",
                                 web::post()
                                     .to(routes::account::account_info::upload_profile_pic),
+                            )
+                            .service(
+                                web::scope("/{id}/email-verifications")
+                                    .route("", web::post().to(routes::account::email_verification::create_user_email_verification))
+                                    .route("", web::get().to(routes::account::email_verification::get_user_email_verifications))
+                                    .route("/{verification_id}", web::put().to(routes::account::email_verification::verify_user_email_code))
                             ),
-                    )
-                    // Admin routes
-                    .service(
-                        web::scope("/admin")
+            )
+            
+            // Admin routes (protected with role check)
+            .service(
+                web::scope("/admin")
                             .wrap(middleware::role_auth::RequireRole::new(models::account::UserRole::Admin))
                             .wrap(middleware::auth::AuthMiddleware)
                             .service(
@@ -332,11 +349,11 @@ async fn main() -> std::io::Result<()> {
                                             )
                                     )
                             )
-                    )
-                    .service(
-                        web::scope("")
-                            .service(
-                                web::scope("/newsletter")
+            )
+            
+            // Newsletter routes
+            .service(
+                web::scope("/newsletter")
                                     .route(
                                         "/subscribe",
                                         web::post().to(routes::account::auth::newsletter_subscribe),
@@ -346,23 +363,34 @@ async fn main() -> std::io::Result<()> {
                                         web::put()
                                             .to(routes::account::auth::newsletter_unsubscribe),
                                     ),
-                            )
-                            .route("/locations", web::get().to(routes::location::get_locations))
-                            .route("/lodging", web::get().to(routes::lodging::get_lodging))
-                            .route(
-                                "/activities",
-                                web::get().to(routes::activity::get_activities),
-                            )
-                            .service(
-                                web::scope("/itineraries")
+            )
+            
+            // Email verification routes (public for signup)
+            .service(
+                web::scope("/email-verifications")
+                                    .route("", web::post().to(routes::account::email_verification::create_signup_email_verification))
+                                    .route("/{id}", web::put().to(routes::account::email_verification::verify_signup_email_code))
+            )
+            
+            // Public content routes
+            .route("/locations", web::get().to(routes::location::get_locations))
+            .route("/lodging", web::get().to(routes::lodging::get_lodging))
+            .route("/activities", web::get().to(routes::activity::get_activities))
+            
+            // Itinerary routes
+            .service(
+                web::scope("/itineraries")
                                     // Public routes
                                     .route(
                                         "/featured",
                                         web::get().to(routes::featured_vacation::get_all),
                                     )
-                                    // Get all itineraries or search with filters
+                                    // Get all itineraries
                                     .route("", web::get().to(routes::itinerary::get_all))
-                                    .route("", web::post().to(routes::itinerary::get_all))
+                                    // Search itineraries with filters
+                                    .route("/search", web::post().to(routes::itinerary::search_itineraries_endpoint))
+                                    // Search with generation fallback
+                                    .route("/search-or-generate", web::post().to(routes::itinerary::search_or_generate_endpoint))
                                     // Public route for getting itinerary by ID
                                     .route("/{id}", web::get().to(routes::itinerary::get_by_id))
                                     // Protected routes
@@ -375,8 +403,6 @@ async fn main() -> std::io::Result<()> {
                                                 web::post().to(routes::dream_vacation::find),
                                             ),
                                     ),
-                            ),
-                    ),
             )
     })
     // HTTP/1.1 configuration

@@ -1,15 +1,16 @@
-use chrono::{DateTime, NaiveTime, Utc};
+use mongodb::bson::DateTime;
 use mongodb::bson::oid::ObjectId;
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize, Serializer};
 use std::collections::HashMap;
 
 use super::base::{FeaturedVacation, ItemLocation};
+use crate::services::search_scoring::ScoreBreakdown;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct TimeSlot {
-    pub start: NaiveTime,
-    pub end: NaiveTime,
+    pub start: String,
+    pub end: String,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -58,7 +59,7 @@ pub struct ActivityModel {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ActivitySummary {
-    pub time: NaiveTime,
+    pub time: String,
     pub label: String,
     pub tags: Vec<String>,
 }
@@ -74,8 +75,10 @@ pub struct AccommodationModel {
     pub amenities: Option<Vec<String>>,
     pub primary_image: Option<String>,
     pub images: Option<Vec<String>>,
-    pub created_at: Option<DateTime<Utc>>,
-    pub updated_at: Option<DateTime<Utc>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<DateTime>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<DateTime>,
 }
 
 // Populated version of the DayItem enum
@@ -84,14 +87,14 @@ pub struct AccommodationModel {
 pub enum PopulatedDayItem {
     #[serde(rename = "transportation")]
     Transportation {
-        time: NaiveTime,
+        time: String,
         location: ItemLocation,
         name: String,
     },
 
     #[serde(rename = "activity")]
     Activity {
-        time: NaiveTime,
+        time: String,
         // Keep activity_id for backward compatibility with existing database records
         activity_id: Option<ObjectId>,
         #[serde(flatten)]
@@ -100,7 +103,7 @@ pub enum PopulatedDayItem {
 
     #[serde(rename = "accommodation")]
     Accommodation {
-        time: NaiveTime,
+        time: String,
         #[serde(flatten)]
         accommodation: AccommodationModel,
     },
@@ -114,6 +117,8 @@ pub struct PopulatedFeaturedVacation {
     pub person_cost: f32,
     pub populated_days: HashMap<String, Vec<PopulatedDayItem>>,
     pub activities: Vec<ActivitySummary>,
+    pub match_score: Option<u8>, // Score from 0-100
+    pub score_breakdown: Option<ScoreBreakdown>, // Detailed score breakdown
 }
 
 // Custom serialization to handle the composition
@@ -123,7 +128,10 @@ impl Serialize for PopulatedFeaturedVacation {
         S: Serializer,
     {
         // Create a serialization struct with all the fields
-        let mut state = serializer.serialize_struct("PopulatedFeaturedVacation", 18)?;
+        let mut field_count = 18;
+        if self.match_score.is_some() { field_count += 1; }
+        if self.score_breakdown.is_some() { field_count += 1; }
+        let mut state = serializer.serialize_struct("PopulatedFeaturedVacation", field_count)?;
 
         // Serialize all base fields
         state.serialize_field("_id", &self.base.id)?;
@@ -149,6 +157,16 @@ impl Serialize for PopulatedFeaturedVacation {
 
         // Serialize the activities summary
         state.serialize_field("activities", &self.activities)?;
+        
+        // Serialize the match score if present
+        if let Some(score) = self.match_score {
+            state.serialize_field("match_score", &score)?;
+        }
+        
+        // Serialize the score breakdown if present
+        if let Some(breakdown) = &self.score_breakdown {
+            state.serialize_field("score_breakdown", breakdown)?;
+        }
 
         state.end()
     }
@@ -167,6 +185,8 @@ impl PopulatedFeaturedVacation {
             person_cost,
             populated_days,
             activities,
+            match_score: None,
+            score_breakdown: None,
         }
     }
 
@@ -180,5 +200,13 @@ impl PopulatedFeaturedVacation {
 
     pub fn person_cost(&self) -> f32 {
         self.person_cost
+    }
+    
+    pub fn set_match_score(&mut self, score: u8) {
+        self.match_score = Some(score.min(100)); // Ensure score doesn't exceed 100
+    }
+    
+    pub fn set_score_breakdown(&mut self, breakdown: ScoreBreakdown) {
+        self.score_breakdown = Some(breakdown);
     }
 }

@@ -1,8 +1,47 @@
 use bson::DateTime;
+use chrono::{TimeZone, Utc};
 use mongodb::bson::oid::ObjectId;
-use serde::{Deserialize, Serialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::str::FromStr;
-use chrono::{Utc, TimeZone};
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum PaymentStatus {
+    /// Booking created without payment requirement (free bookings or pay-later arrangements)
+    /// The booking is valid and confirmed despite no payment being processed
+    #[serde(rename = "ongoing")]
+    Ongoing,
+    
+    /// Booking created and payment intent initialized but not yet captured
+    /// User has provided payment details but charge hasn't been processed
+    #[serde(rename = "pending")]
+    Pending,
+    
+    /// Payment capture was attempted but is still processing
+    /// Intermediate state between pending and confirmed/failed
+    #[serde(rename = "pending_payment")]
+    PendingPayment,
+    
+    /// Payment successfully captured and booking is financially confirmed
+    /// The user has been charged and the booking is guaranteed
+    #[serde(rename = "confirmed")]
+    Confirmed,
+    
+    /// Booking was cancelled but no payment was ever processed
+    /// No refund needed as user was never charged
+    #[serde(rename = "cancelled")]
+    Cancelled,
+    
+    /// Booking was cancelled after payment was captured
+    /// Refund has been processed back to the user's payment method
+    #[serde(rename = "refunded")]
+    Refunded,
+    
+    /// Payment capture was attempted but failed
+    /// User needs to retry payment or booking will be cancelled
+    #[serde(rename = "payment_failed")]
+    PaymentFailed,
+}
 
 // A flexible date parser that attempts to parse various date formats
 fn flexible_date_parser<'de, D>(deserializer: D) -> Result<DateTime, D::Error>
@@ -26,12 +65,12 @@ where
 
     // Try with different formats using chrono
     let formats = [
-        "%Y-%m-%dT%H:%M:%S%.fZ",       // ISO 8601 with fractional seconds
-        "%Y-%m-%dT%H:%M:%SZ",          // ISO 8601 without fractional seconds
-        "%Y-%m-%dT%H:%M:%S%.f%:z",     // ISO 8601 with timezone offset
-        "%Y-%m-%dT%H:%M:%S%:z",        // ISO 8601 with timezone offset, no fractional seconds
-        "%Y-%m-%d %H:%M:%S",           // Simple datetime format
-        "%Y-%m-%d",                    // Just date
+        "%Y-%m-%dT%H:%M:%S%.fZ",   // ISO 8601 with fractional seconds
+        "%Y-%m-%dT%H:%M:%SZ",      // ISO 8601 without fractional seconds
+        "%Y-%m-%dT%H:%M:%S%.f%:z", // ISO 8601 with timezone offset
+        "%Y-%m-%dT%H:%M:%S%:z",    // ISO 8601 with timezone offset, no fractional seconds
+        "%Y-%m-%d %H:%M:%S",       // Simple datetime format
+        "%Y-%m-%d",                // Just date
     ];
 
     for format in formats {
@@ -52,10 +91,14 @@ where
     Err(Error::custom(format!("Could not parse date: {}", date_str)))
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct BookingInput {
+    #[serde(deserialize_with = "flexible_date_parser")]
     pub arrival_datetime: DateTime,
+    
+    #[serde(deserialize_with = "flexible_date_parser")]
     pub departure_datetime: DateTime,
+    
     pub customer_id: Option<String>,
     pub transaction_id: Option<String>,
 }
@@ -76,7 +119,7 @@ pub struct BookingWithPaymentInput {
     pub description: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct BookingDetails {
     #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
     pub id: Option<ObjectId>,
@@ -86,13 +129,13 @@ pub struct BookingDetails {
     pub transaction_id: Option<String>,
     pub arrival_datetime: DateTime,
     pub departure_datetime: DateTime,
-    pub status: String,
+    pub status: PaymentStatus,
     pub bookings: Option<Vec<SingleBooking>>,
     pub created_at: Option<DateTime>,
     pub updated_at: Option<DateTime>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct SingleBooking {
     #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
     pub id: Option<ObjectId>,
