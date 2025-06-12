@@ -18,6 +18,8 @@ env:
   MONGODB_URI: ${{secrets.MONGODB_URI}}
   STRIPE_SECRET_KEY: ${{secrets.STRIPE_SECRET_KEY}}
   STRIPE_WEBHOOK_SECRET: ${{secrets.STRIPE_WEBHOOK_SECRET}}
+  GOOGLE_MAPS_API_KEY: ${{secrets.GOOGLE_MAPS_API_KEY}}
+  SENDGRID_API_KEY: ${{secrets.SENDGRID_API_KEY}}
   CLOUD_STORAGE_URL: ${{vars.CLOUD_STORAGE_URL}}
   FACEBOOK_REDIRECT_URI: ${{vars.FACEBOOK_REDIRECT_URI}}
   GOOGLE_REDIRECT_URI: ${{vars.GOOGLE_REDIRECT_URI}}
@@ -26,6 +28,10 @@ env:
   PROFILE_PIC_BUCKET: ${{vars.PROFILE_PIC_BUCKET}}
   ACTIVITY_BUCKET: ${{vars.ACTIVITY_BUCKET}}
   RUST_LOG: ${{vars.RUST_LOG}}
+  GOOGLE_CLOUD_PROJECT_ID: ${{vars.GOOGLE_CLOUD_PROJECT_ID}}
+  VERTEX_SEARCH_LOCATION: ${{vars.VERTEX_SEARCH_LOCATION}}
+  VERTEX_SEARCH_DATA_STORE_ID: ${{vars.VERTEX_SEARCH_DATA_STORE_ID}}
+  VERTEX_SEARCH_SERVING_CONFIG: ${{vars.VERTEX_SEARCH_SERVING_CONFIG}}
 jobs:
   deploy-uat:
     if: github.ref == 'refs/heads/uat'
@@ -61,6 +67,10 @@ jobs:
           RUST_ENV: "${{ env.RUST_ENV }}"
           RUST_LOG: "${{ env.RUST_LOG }}"
           ACTIVITY_BUCKET: "${{ env.ACTIVITY_BUCKET }}"
+          GOOGLE_CLOUD_PROJECT_ID: "${{ env.GOOGLE_CLOUD_PROJECT_ID }}"
+          VERTEX_SEARCH_LOCATION: "${{ env.VERTEX_SEARCH_LOCATION }}"
+          VERTEX_SEARCH_DATA_STORE_ID: "${{ env.VERTEX_SEARCH_DATA_STORE_ID }}"
+          VERTEX_SEARCH_SERVING_CONFIG: "${{ env.VERTEX_SEARCH_SERVING_CONFIG }}"
           EOF
       - name: Deploy with env vars
         run: |
@@ -70,7 +80,7 @@ jobs:
             --platform managed \
             --service-account=actota-api@${PROJECT_ID}.iam.gserviceaccount.com \
             --env-vars-file=env.yaml \
-            --update-secrets=FACEBOOK_CLIENT_SECRET=FACEBOOK_CLIENT_SECRET:latest,GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET:latest,JWT_SECRET=JWT_SECRET:latest,MONGODB_URI=MONGODB_URI:latest,STRIPE_SECRET_KEY=STRIPE_SECRET_KEY:latest,STRIPE_WEBHOOK_SECRET=STRIPE_WEBHOOK_SECRET:latest \
+            --update-secrets=FACEBOOK_CLIENT_SECRET=FACEBOOK_CLIENT_SECRET:latest,GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET:latest,JWT_SECRET=JWT_SECRET:latest,MONGODB_URI=MONGODB_URI:latest,STRIPE_SECRET_KEY=STRIPE_SECRET_KEY:latest,STRIPE_WEBHOOK_SECRET=STRIPE_WEBHOOK_SECRET:latest,GOOGLE_MAPS_API_KEY=GOOGLE_MAPS_API_KEY:latest,SENDGRID_API_KEY=SENDGRID_API_KEY:latest \
             --allow-unauthenticated
 
   deploy-prod:
@@ -106,6 +116,10 @@ jobs:
           RUST_ENV: "${{ env.RUST_ENV }}"
           RUST_LOG: "${{ env.RUST_LOG }}"
           ACTIVITY_BUCKET: "${{ env.ACTIVITY_BUCKET }}"
+          GOOGLE_CLOUD_PROJECT_ID: "${{ env.GOOGLE_CLOUD_PROJECT_ID }}"
+          VERTEX_SEARCH_LOCATION: "${{ env.VERTEX_SEARCH_LOCATION }}"
+          VERTEX_SEARCH_DATA_STORE_ID: "${{ env.VERTEX_SEARCH_DATA_STORE_ID }}"
+          VERTEX_SEARCH_SERVING_CONFIG: "${{ env.VERTEX_SEARCH_SERVING_CONFIG }}"
           EOF
       - name: Deploy with env vars
         run: |
@@ -115,5 +129,5 @@ jobs:
             --platform managed \
             --service-account=actota-api@${PROJECT_ID}.iam.gserviceaccount.com \
             --env-vars-file=env.yaml \
-            --update-secrets=FACEBOOK_CLIENT_SECRET=FACEBOOK_CLIENT_SECRET:latest,GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET:latest,JWT_SECRET=JWT_SECRET:latest,MONGODB_URI=MONGODB_URI:latest,STRIPE_SECRET_KEY=STRIPE_SECRET_KEY:latest,STRIPE_WEBHOOK_SECRET=STRIPE_WEBHOOK_SECRET:latest \
+            --update-secrets=FACEBOOK_CLIENT_SECRET=FACEBOOK_CLIENT_SECRET:latest,GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET:latest,JWT_SECRET=JWT_SECRET:latest,MONGODB_URI=MONGODB_URI:latest,STRIPE_SECRET_KEY=STRIPE_SECRET_KEY:latest,STRIPE_WEBHOOK_SECRET=STRIPE_WEBHOOK_SECRET:latest,GOOGLE_MAPS_API_KEY=GOOGLE_MAPS_API_KEY:latest,SENDGRID_API_KEY=SENDGRID_API_KEY:latest \
             --allow-unauthenticated
