@@ -92,7 +92,7 @@ pub struct FeaturedVacation {
     pub updated_at: Option<DateTime>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tag: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing)]
     pub activities: Option<Vec<Activity>>,
 }
 

@@ -381,6 +381,7 @@ async fn main() -> std::io::Result<()> {
             .service(
                 web::scope("/itineraries")
                                     // Public routes
+                                    // This route is to be removed
                                     .route(
                                         "/featured",
                                         web::get().to(routes::featured_vacation::get_all),
@@ -390,7 +391,7 @@ async fn main() -> std::io::Result<()> {
                                     // Search itineraries with filters
                                     .route("/search", web::post().to(routes::itinerary::search_itineraries_endpoint))
                                     // Search with generation fallback
-                                    .route("/search-or-generate", web::post().to(routes::itinerary::search_or_generate_endpoint))
+                                    .route("/search-or-generate", web::post().to(routes::itinerary::search_or_generate))
                                     // Public route for getting itinerary by ID
                                     .route("/{id}", web::get().to(routes::itinerary::get_by_id))
                                     // Protected routes
