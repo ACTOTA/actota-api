@@ -1,8 +1,8 @@
 use crate::models::itinerary::base::{Activity, ItinerarySubmission};
 use crate::models::itinerary::populated::PopulatedFeaturedVacation;
 use crate::models::{itinerary::base::FeaturedVacation, search::SearchItinerary};
-use crate::services::itinerary_service::get_images;
 use crate::services::itinerary_search_service::search_or_generate_itineraries;
+use crate::services::itinerary_service::get_images;
 use crate::services::search_scoring::{AsyncSearchScorer, SearchScorer};
 use actix_web::{web, HttpResponse, Responder};
 use bson::{doc, DateTime};
@@ -122,8 +122,11 @@ pub async fn get_all(
     let limit = query.limit.unwrap_or(10); // Default to 10 items per page
     let page = query.page.unwrap_or(1); // Default to page 1
     let skip = (page - 1) * limit;
-    
-    println!("Pagination - page: {}, limit: {}, skip: {}", page, limit, skip);
+
+    println!(
+        "Pagination - page: {}, limit: {}, skip: {}",
+        page, limit, skip
+    );
 
     // Get itineraries with pagination
     let sort_options = doc! { "created_at": -1 };
@@ -156,14 +159,12 @@ pub async fn get_all(
                     .map(|itinerary| {
                         let client_clone = client.clone();
                         let itinerary_clone = itinerary.clone();
-                        async move {
-                            itinerary_clone.populate(&client_clone).await
-                        }
+                        async move { itinerary_clone.populate(&client_clone).await }
                     })
                     .collect();
 
                 let populate_results = futures::future::join_all(populate_futures).await;
-                
+
                 let mut populated_itineraries = Vec::new();
                 for result in populate_results {
                     match result {
@@ -196,13 +197,13 @@ pub async fn get_all(
 
 /*
     /api/itineraries/search (Search itineraries with intelligent generation fallback)
-    
+
     This endpoint now uses smart search-or-generate functionality:
     1. Searches existing itineraries first
     2. If insufficient results found (< MIN_SEARCH_RESULTS), generates new optimized itineraries
     3. Uses route optimization with Google Maps for realistic travel times
     4. Returns mix of existing + generated itineraries for better user experience
-    
+
     Environment variables:
     - MIN_SEARCH_RESULTS: Minimum results before triggering generation (default: 3)
     - GOOGLE_MAPS_API_KEY: For real driving distances and traffic-aware routing
@@ -292,67 +293,103 @@ pub async fn search_itineraries_endpoint(
         .and_then(|s| s.parse::<usize>().ok())
         .unwrap_or(3); // Default to 3 minimum results
 
-    println!("Using search-or-generate with threshold: {}", min_results_threshold);
+    println!(
+        "Using search-or-generate with threshold: {}",
+        min_results_threshold
+    );
 
     // Use search_or_generate_itineraries which includes route optimization
-    match search_or_generate_itineraries(client.as_ref().clone(), search_query.clone(), min_results_threshold).await {
+    match search_or_generate_itineraries(
+        client.as_ref().clone(),
+        search_query.clone(),
+        min_results_threshold,
+    )
+    .await
+    {
         Ok(itineraries) => {
             if itineraries.is_empty() {
                 return HttpResponse::Ok().json(Vec::<PopulatedFeaturedVacation>::new());
             }
 
-            println!("Found/generated {} itineraries for frontend search", itineraries.len());
+            println!(
+                "Found/generated {} itineraries for frontend search",
+                itineraries.len()
+            );
 
             // Process images for all itineraries
             let processed_itineraries = get_images(itineraries).await;
-            
+
             // Initialize the async search scorer for better activity matching
             let scorer = AsyncSearchScorer::new(client.as_ref().clone());
-            
+
             // Score all itineraries (existing and generated) with database lookup
-            let scored_results = scorer.score_and_rank_itineraries(processed_itineraries.clone(), &search_query).await;
-            
+            let scored_results = scorer
+                .score_and_rank_itineraries(processed_itineraries.clone(), &search_query)
+                .await;
+
             // Calculate max possible score once
-            let max_possible_score = scorer.weights.location_weight + 
-                                   scorer.weights.activity_weight + 
-                                   scorer.weights.group_size_weight + 
-                                   scorer.weights.lodging_weight + 
-                                   scorer.weights.transportation_weight;
-            
+            let max_possible_score = scorer.weights.location_weight
+                + scorer.weights.activity_weight
+                + scorer.weights.group_size_weight
+                + scorer.weights.lodging_weight
+                + scorer.weights.transportation_weight;
+
             // Populate all itineraries concurrently with scores
             let populate_futures: Vec<_> = processed_itineraries
                 .iter()
                 .map(|itinerary| {
                     let client_clone = client.clone();
                     let itinerary_clone = itinerary.clone();
-                    let scored_result = scored_results.iter()
+                    let scored_result = scored_results
+                        .iter()
                         .find(|s| s.itinerary.id == itinerary.id)
                         .cloned();
-                    
+
                     async move {
                         match itinerary_clone.populate(&client_clone).await {
                             Ok(mut populated) => {
                                 // Apply scores if found
                                 if let Some(scored) = scored_result {
-                                    let normalized_score = (scored.total_score / max_possible_score * 100.0) as u8;
+                                    let normalized_score =
+                                        (scored.total_score / max_possible_score * 100.0) as u8;
                                     populated.set_match_score(normalized_score);
-                                    
+
                                     // Normalize score breakdown to 0-100 range
                                     let mut normalized_breakdown = scored.score_breakdown.clone();
-                                    normalized_breakdown.location_score = (normalized_breakdown.location_score / max_possible_score * 100.0).round();
-                                    normalized_breakdown.activity_score = (normalized_breakdown.activity_score / max_possible_score * 100.0).round();
-                                    normalized_breakdown.group_size_score = (normalized_breakdown.group_size_score / max_possible_score * 100.0).round();
-                                    normalized_breakdown.lodging_score = (normalized_breakdown.lodging_score / max_possible_score * 100.0).round();
-                                    normalized_breakdown.transportation_score = (normalized_breakdown.transportation_score / max_possible_score * 100.0).round();
-                                    
+                                    normalized_breakdown.location_score =
+                                        (normalized_breakdown.location_score / max_possible_score
+                                            * 100.0)
+                                            .round();
+                                    normalized_breakdown.activity_score =
+                                        (normalized_breakdown.activity_score / max_possible_score
+                                            * 100.0)
+                                            .round();
+                                    normalized_breakdown.group_size_score = (normalized_breakdown
+                                        .group_size_score
+                                        / max_possible_score
+                                        * 100.0)
+                                        .round();
+                                    normalized_breakdown.lodging_score =
+                                        (normalized_breakdown.lodging_score / max_possible_score
+                                            * 100.0)
+                                            .round();
+                                    normalized_breakdown.transportation_score =
+                                        (normalized_breakdown.transportation_score
+                                            / max_possible_score
+                                            * 100.0)
+                                            .round();
+
                                     populated.set_score_breakdown(normalized_breakdown);
                                 }
-                                
+
                                 // Log generated itineraries for frontend visibility
                                 if itinerary.tag.as_deref() == Some("generated") {
-                                    println!("Frontend receiving generated itinerary: {}", populated.trip_name());
+                                    println!(
+                                        "Frontend receiving generated itinerary: {}",
+                                        populated.trip_name()
+                                    );
                                 }
-                                
+
                                 Ok(populated)
                             }
                             Err(err) => {
@@ -365,7 +402,7 @@ pub async fn search_itineraries_endpoint(
                 .collect();
 
             let populate_results = futures::future::join_all(populate_futures).await;
-            
+
             let mut populated_itineraries = Vec::new();
             for result in populate_results {
                 if let Ok(populated) = result {
@@ -373,12 +410,15 @@ pub async fn search_itineraries_endpoint(
                 }
             }
 
-            // Return the base itineraries (not populated) to match expected frontend format  
+            // Return the base itineraries (not populated) to match expected frontend format
             // The populated version includes full activity objects which are too verbose for the frontend
             HttpResponse::Ok().json(processed_itineraries)
         }
         Err(err) => {
-            eprintln!("Failed to search/generate itineraries for frontend: {:?}", err);
+            eprintln!(
+                "Failed to search/generate itineraries for frontend: {:?}",
+                err
+            );
             HttpResponse::InternalServerError().body("Failed to search or generate itineraries")
         }
     }
@@ -386,12 +426,12 @@ pub async fn search_itineraries_endpoint(
 
 /*
     /api/itineraries/search-or-generate (Explicit search with generation fallback)
-    
+
     This endpoint provides the same functionality as /search but with explicit naming.
     Both endpoints now use the same intelligent search-or-generate logic.
     This endpoint is kept for API compatibility and explicit use cases.
 */
-pub async fn search_or_generate_endpoint(
+pub async fn search_or_generate(
     data: web::Data<Arc<Client>>,
     search_params: web::Json<SearchItinerary>,
 ) -> impl Responder {
@@ -400,7 +440,7 @@ pub async fn search_or_generate_endpoint(
 
     let client = data.into_inner();
     let search_query = search_params.into_inner();
-    
+
     // Define minimum results threshold (configurable via env var)
     let min_results_threshold = std::env::var("MIN_SEARCH_RESULTS")
         .ok()
@@ -408,7 +448,13 @@ pub async fn search_or_generate_endpoint(
         .unwrap_or(3); // Default to 3 minimum results
 
     // Use search_or_generate_itineraries
-    match search_or_generate_itineraries(client.as_ref().clone(), search_query.clone(), min_results_threshold).await {
+    match search_or_generate_itineraries(
+        client.as_ref().clone(),
+        search_query.clone(),
+        min_results_threshold,
+    )
+    .await
+    {
         Ok(itineraries) => {
             if itineraries.is_empty() {
                 return HttpResponse::Ok().json(Vec::<PopulatedFeaturedVacation>::new());
@@ -418,54 +464,78 @@ pub async fn search_or_generate_endpoint(
 
             // Process images for all itineraries
             let processed_itineraries = get_images(itineraries).await;
-            
+
             // Initialize the async search scorer for better activity matching
             let scorer = AsyncSearchScorer::new(client.as_ref().clone());
-            
+
             // Score all itineraries (including generated ones) with database lookup
-            let scored_results = scorer.score_and_rank_itineraries(processed_itineraries.clone(), &search_query).await;
-            
+            let scored_results = scorer
+                .score_and_rank_itineraries(processed_itineraries.clone(), &search_query)
+                .await;
+
             // Calculate max possible score once
-            let max_possible_score = scorer.weights.location_weight + 
-                                   scorer.weights.activity_weight + 
-                                   scorer.weights.group_size_weight + 
-                                   scorer.weights.lodging_weight + 
-                                   scorer.weights.transportation_weight;
-            
+            let max_possible_score = scorer.weights.location_weight
+                + scorer.weights.activity_weight
+                + scorer.weights.group_size_weight
+                + scorer.weights.lodging_weight
+                + scorer.weights.transportation_weight;
+
             // Populate all itineraries concurrently with scores
             let populate_futures: Vec<_> = processed_itineraries
                 .iter()
                 .map(|itinerary| {
                     let client_clone = client.clone();
                     let itinerary_clone = itinerary.clone();
-                    let scored_result = scored_results.iter()
+                    let scored_result = scored_results
+                        .iter()
                         .find(|s| s.itinerary.id == itinerary.id)
                         .cloned();
-                    
+
                     async move {
                         match itinerary_clone.populate(&client_clone).await {
                             Ok(mut populated) => {
                                 // Apply scores if found
                                 if let Some(scored) = scored_result {
-                                    let normalized_score = (scored.total_score / max_possible_score * 100.0) as u8;
+                                    let normalized_score =
+                                        (scored.total_score / max_possible_score * 100.0) as u8;
                                     populated.set_match_score(normalized_score);
-                                    
+
                                     // Normalize score breakdown to 0-100 range
                                     let mut normalized_breakdown = scored.score_breakdown.clone();
-                                    normalized_breakdown.location_score = (normalized_breakdown.location_score / max_possible_score * 100.0).round();
-                                    normalized_breakdown.activity_score = (normalized_breakdown.activity_score / max_possible_score * 100.0).round();
-                                    normalized_breakdown.group_size_score = (normalized_breakdown.group_size_score / max_possible_score * 100.0).round();
-                                    normalized_breakdown.lodging_score = (normalized_breakdown.lodging_score / max_possible_score * 100.0).round();
-                                    normalized_breakdown.transportation_score = (normalized_breakdown.transportation_score / max_possible_score * 100.0).round();
-                                    
+                                    normalized_breakdown.location_score =
+                                        (normalized_breakdown.location_score / max_possible_score
+                                            * 100.0)
+                                            .round();
+                                    normalized_breakdown.activity_score =
+                                        (normalized_breakdown.activity_score / max_possible_score
+                                            * 100.0)
+                                            .round();
+                                    normalized_breakdown.group_size_score = (normalized_breakdown
+                                        .group_size_score
+                                        / max_possible_score
+                                        * 100.0)
+                                        .round();
+                                    normalized_breakdown.lodging_score =
+                                        (normalized_breakdown.lodging_score / max_possible_score
+                                            * 100.0)
+                                            .round();
+                                    normalized_breakdown.transportation_score =
+                                        (normalized_breakdown.transportation_score
+                                            / max_possible_score
+                                            * 100.0)
+                                            .round();
+
                                     populated.set_score_breakdown(normalized_breakdown);
                                 }
-                                
+
                                 // Mark generated itineraries
                                 if itinerary.tag.as_deref() == Some("generated") {
-                                    println!("Marking itinerary {} as generated", populated.trip_name());
+                                    println!(
+                                        "Marking itinerary {} as generated",
+                                        populated.trip_name()
+                                    );
                                 }
-                                
+
                                 Ok(populated)
                             }
                             Err(err) => {
@@ -478,7 +548,7 @@ pub async fn search_or_generate_endpoint(
                 .collect();
 
             let populate_results = futures::future::join_all(populate_futures).await;
-            
+
             let mut populated_itineraries = Vec::new();
             for result in populate_results {
                 if let Ok(populated) = result {

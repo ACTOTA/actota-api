@@ -181,45 +181,52 @@ pub async fn search_or_generate_itineraries(
 ) -> Result<Vec<FeaturedVacation>, Box<dyn std::error::Error>> {
     // First, try to find existing itineraries
     let mut results = search_itineraries(client.clone(), search_params.clone()).await?;
-    
+
     // If we have enough results, return them
     if results.len() >= min_results_threshold {
         return Ok(results);
     }
-    
+
     // If not enough results, try to generate a new itinerary
     println!(
         "Found only {} itineraries, generating new ones to meet threshold of {}",
         results.len(),
         min_results_threshold
     );
-    
+
     // Check if we have the required fields for generation
     if search_params.arrival_datetime.is_none() || search_params.departure_datetime.is_none() {
         println!("Cannot generate itinerary without arrival and departure dates, returning existing results (including partial matches)");
         return Ok(results);
     }
-    
+
     // Create itinerary generator
     let generator = ItineraryGenerator::new(client.clone());
-    
+
     // Try to generate a new itinerary
     match generator.generate_itinerary(&search_params).await {
         Ok(generated_itinerary) => {
-            println!("Successfully generated new itinerary: {}", generated_itinerary.trip_name);
-            
+            println!(
+                "Successfully generated new itinerary: {}",
+                generated_itinerary.trip_name
+            );
+
             // Save the generated itinerary to the database
-            let collection: Collection<FeaturedVacation> = client.database("Itineraries").collection("Featured");
+            let collection: Collection<FeaturedVacation> =
+                client.database("Itineraries").collection("Featured");
             match collection.insert_one(&generated_itinerary).await {
                 Ok(insert_result) => {
-                    println!("Saved generated itinerary to database with ID: {:?}", insert_result.inserted_id);
+                    println!(
+                        "Saved generated itinerary to database with ID: {:?}",
+                        insert_result.inserted_id
+                    );
                 }
                 Err(e) => {
                     eprintln!("Failed to save generated itinerary to database: {}", e);
                     // Continue anyway - the itinerary is still useful for this request
                 }
             }
-            
+
             results.push(generated_itinerary);
         }
         Err(e) => {
@@ -227,58 +234,7 @@ pub async fn search_or_generate_itineraries(
             // Return existing results even if generation failed
         }
     }
-    
-    Ok(results)
-}
 
-/// Search for itineraries with generation fallback (simplified version)
-pub async fn search_or_generate_with_config(
-    client: Arc<Client>,
-    search_params: SearchItinerary,
-    min_results_threshold: usize,
-    _generation_config: (), // Removed config, kept for API compatibility
-) -> Result<Vec<FeaturedVacation>, Box<dyn std::error::Error>> {
-    // First, try to find existing itineraries
-    let mut results = search_itineraries(client.clone(), search_params.clone()).await?;
-    
-    // If we have enough results, return them
-    if results.len() >= min_results_threshold {
-        return Ok(results);
-    }
-    
-    // Check if we have the required fields for generation
-    if search_params.arrival_datetime.is_none() || search_params.departure_datetime.is_none() {
-        println!("Cannot generate itinerary without arrival and departure dates");
-        return Ok(results);
-    }
-    
-    // Create itinerary generator
-    let generator = ItineraryGenerator::new(client.clone());
-    
-    // Try to generate a new itinerary
-    match generator.generate_itinerary(&search_params).await {
-        Ok(generated_itinerary) => {
-            println!("Successfully generated new itinerary: {}", generated_itinerary.trip_name);
-            
-            // Save the generated itinerary to the database
-            let collection: Collection<FeaturedVacation> = client.database("Itineraries").collection("Featured");
-            match collection.insert_one(&generated_itinerary).await {
-                Ok(insert_result) => {
-                    println!("Saved generated itinerary to database with ID: {:?}", insert_result.inserted_id);
-                }
-                Err(e) => {
-                    eprintln!("Failed to save generated itinerary to database: {}", e);
-                    // Continue anyway - the itinerary is still useful for this request
-                }
-            }
-            
-            results.push(generated_itinerary);
-        }
-        Err(e) => {
-            eprintln!("Failed to generate itinerary: {}", e);
-        }
-    }
-    
     Ok(results)
 }
 
@@ -341,10 +297,13 @@ async fn try_partial_search(
             if filter.contains_key("$or") {
                 // Combine with existing $or using $and
                 let existing_or = filter.remove("$or").unwrap();
-                filter.insert("$and", vec![
-                    doc! { "$or": existing_or },
-                    doc! { "$or": or_conditions_bson }
-                ]);
+                filter.insert(
+                    "$and",
+                    vec![
+                        doc! { "$or": existing_or },
+                        doc! { "$or": or_conditions_bson },
+                    ],
+                );
             } else {
                 filter.insert("$or", or_conditions_bson);
             }
