@@ -7,6 +7,7 @@ use actix_web::{web, HttpResponse, Responder};
 use bson::{doc, oid::ObjectId};
 use futures::TryStreamExt;
 use mongodb::Client;
+use serde_json::json;
 use std::sync::Arc;
 
 pub async fn add_favorite(
@@ -17,7 +18,7 @@ pub async fn add_favorite(
     // Get the itinerary_id from the path
     let (user_id, itinerary_id) = path.into_inner();
     if user_id != claims.user_id {
-        return HttpResponse::Forbidden().body("Forbidden");
+        return HttpResponse::Forbidden().json(json!({"error": "Forbidden"}));
     }
 
     let client = data.into_inner();
@@ -30,7 +31,7 @@ pub async fn add_favorite(
         .await
         .is_err()
     {
-        return HttpResponse::NotFound().body("Itinerary not found");
+        return HttpResponse::NotFound().json(json!({"error": "Itinerary not found"}));
     }
 
     let collection: mongodb::Collection<Favorite> =
@@ -44,7 +45,7 @@ pub async fn add_favorite(
     match collection.find_one(filter).await {
         Ok(Some(_)) => {
             // Already a favorite
-            return HttpResponse::Conflict().body("Favorite already exists");
+            return HttpResponse::Conflict().json(json!({"error": "Favorite already exists"}));
         }
         Ok(None) => {
             // Not a favorite yet
@@ -61,15 +62,15 @@ pub async fn add_favorite(
 
             match collection.insert_one(&favorite).await {
                 Ok(_) => {
-                    return HttpResponse::Ok().body("Itinerary added to favorites");
+                    return HttpResponse::Ok().json(json!({"status": "success", "message": "Itinerary added to favorites"}));
                 }
                 Err(_) => {
-                    return HttpResponse::InternalServerError().body("Failed to add favorite");
+                    return HttpResponse::InternalServerError().json(json!({"error": "Failed to add favorite"}));
                 }
             }
         }
         Err(_) => {
-            return HttpResponse::InternalServerError().body("Failed to check for favorite");
+            return HttpResponse::InternalServerError().json(json!({"error": "Failed to check for favorite"}));
         }
     }
 }
@@ -85,7 +86,7 @@ pub async fn remove_favorite(
 
     let (user_id, itinerary_id) = path.into_inner();
     if user_id != claims.user_id {
-        return HttpResponse::Forbidden().body("Forbidden");
+        return HttpResponse::Forbidden().json(json!({"error": "Forbidden"}));
     }
 
     let filter = doc! {
@@ -95,10 +96,10 @@ pub async fn remove_favorite(
 
     match collection.delete_one(filter).await {
         Ok(_) => {
-            return HttpResponse::Ok().body("Removed Favorite");
+            return HttpResponse::Ok().json(json!({"status": "success", "message": "Removed Favorite"}));
         }
         Err(_) => {
-            return HttpResponse::InternalServerError().body("Failed to remove favorite");
+            return HttpResponse::InternalServerError().json(json!({"error": "Failed to remove favorite"}));
         }
     }
 }
@@ -109,7 +110,7 @@ pub async fn get_favorites(
     path: web::Path<(String,)>,
 ) -> impl Responder {
     if path.into_inner().0 != claims.user_id {
-        return HttpResponse::Forbidden().body("Forbidden");
+        return HttpResponse::Forbidden().json(json!({"error": "Forbidden"}));
     }
 
     let client = data.into_inner();
@@ -174,26 +175,26 @@ pub async fn get_favorites(
                                 Err(err) => {
                                     eprintln!("Error fetching itineraries: {:?}", err);
                                     HttpResponse::InternalServerError()
-                                        .body("Failed to retrieve itineraries")
+                                        .json(json!({"error": "Failed to retrieve itineraries"}))
                                 }
                             }
                         }
                         Err(err) => {
                             eprintln!("Error fetching itineraries: {:?}", err);
                             HttpResponse::InternalServerError()
-                                .body("Failed to retrieve itineraries")
+                                .json(json!({"error": "Failed to retrieve itineraries"}))
                         }
                     }
                 }
                 Err(err) => {
                     eprintln!("Error retrieving favorites: {:?}", err);
-                    HttpResponse::InternalServerError().body("Failed to retrieve favorites")
+                    HttpResponse::InternalServerError().json(json!({"error": "Failed to retrieve favorites"}))
                 }
             }
         }
         Err(err) => {
             eprintln!("Error fetching favorites: {:?}", err);
-            HttpResponse::InternalServerError().body("Failed to fetch favorites")
+            HttpResponse::InternalServerError().json(json!({"error": "Failed to fetch favorites"}))
         }
     }
 }
