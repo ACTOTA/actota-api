@@ -17,6 +17,10 @@ pub fn create_google_oauth_client() -> BasicClient {
         .expect("Missing GOOGLE_CLIENT_SECRET environment variable");
     let google_redirect_url =
         env::var("GOOGLE_REDIRECT_URI").expect("Missing GOOGLE_REDIRECT_URI environment variable");
+    
+    println!("Google OAuth client config:");
+    println!("  Client ID: {}", if google_client_id.len() > 10 { &google_client_id[..10] } else { &google_client_id });
+    println!("  Redirect URI: {}", google_redirect_url);
 
     BasicClient::new(
         ClientId::new(google_client_id),

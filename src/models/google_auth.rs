@@ -1,10 +1,10 @@
 use serde::{Deserialize, Serialize};
 
 // Query parameters from Google OAuth callback
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct GoogleAuthCallbackParams {
     pub code: String,
-    pub state: String,
+    pub state: Option<String>,
     pub scope: Option<String>,
     pub error: Option<String>,
 }

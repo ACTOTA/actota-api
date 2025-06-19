@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
+use crate::models::account::UserRole;
 
 #[derive(Serialize, Deserialize)]
 pub struct UserSession {
@@ -10,6 +11,7 @@ pub struct UserSession {
     pub first_name: String,
     pub last_name: String,
     pub customer_id: Option<String>,
+    pub role: Option<UserRole>,
     pub created_at: DateTime<Utc>,
 }
 

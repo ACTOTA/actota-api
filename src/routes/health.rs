@@ -205,8 +205,9 @@ async fn check_cloud_storage() -> ServiceStatus {
     // Check if required environment variables are set
     let itinerary_bucket = env::var("ITINERARY_BUCKET").ok();
     let profile_pic_bucket = env::var("PROFILE_PIC_BUCKET").ok();
+    let activity_bucket = env::var("ACTIVITY_BUCKET").ok();
 
-    if itinerary_bucket.is_none() || profile_pic_bucket.is_none() {
+    if itinerary_bucket.is_none() || profile_pic_bucket.is_none() || activity_bucket.is_none() {
         let mut missing = Vec::new();
 
         if itinerary_bucket.is_none() {
@@ -214,6 +215,9 @@ async fn check_cloud_storage() -> ServiceStatus {
         }
         if profile_pic_bucket.is_none() {
             missing.push("PROFILE_PIC_BUCKET");
+        }
+        if activity_bucket.is_none() {
+            missing.push("ACTIVITY_BUCKET");
         }
 
         return ServiceStatus {

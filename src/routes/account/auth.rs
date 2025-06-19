@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::middleware::auth::Claims;
-use crate::models::account::User;
+use crate::models::account::{User, UserRole};
 use crate::models::user::{Newsletter, UserSession};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -31,10 +31,12 @@ pub async fn signup(data: web::Data<Arc<Client>>, input: web::Json<User>) -> imp
     doc.password = bcrypt::hash(doc.password, bcrypt::DEFAULT_COST).unwrap_or("".to_string());
     doc.created_at = Some(curr_time);
     doc.updated_at = Some(curr_time);
+    // Default role is User for new signups
+    doc.role = Some(UserRole::User);
 
     match collection.insert_one(&doc).await {
         Ok(result) => {
-            match generate_token(&doc.email, result.inserted_id.as_object_id().unwrap()) {
+            match generate_token(&doc.email, result.inserted_id.as_object_id().unwrap(), doc.role.as_ref()) {
                 Ok(token) => HttpResponse::Ok().json(TokenResponse { auth_token: token }),
                 Err(_) => HttpResponse::InternalServerError().body("Token generation failed"),
             }
@@ -82,7 +84,7 @@ pub async fn signin(data: web::Data<Arc<Client>>, input: web::Json<User>) -> imp
                 {
                     Ok(_) => {
                         let token =
-                            generate_token(&email, user.id.expect("Unable to read user_id."))
+                            generate_token(&email, user.id.expect("Unable to read user_id."), user.role.as_ref())
                                 .map_err(|_| {
                                     HttpResponse::InternalServerError()
                                         .body("Token generation failed")
@@ -141,6 +143,7 @@ pub async fn user_session(
                     first_name: user.first_name.unwrap_or_default(),
                     last_name: user.last_name.unwrap_or_default(),
                     customer_id: user.customer_id,
+                    role: user.role,
                     created_at: user.created_at.unwrap_or_default(),
                 };
                 HttpResponse::Ok().json(user_session)
@@ -165,15 +168,23 @@ fn is_valid_email(email: &str) -> bool {
 pub fn generate_token(
     email: &str,
     user_id: ObjectId,
+    role: Option<&UserRole>,
 ) -> Result<String, jsonwebtoken::errors::Error> {
     let secret = std::env::var("JWT_SECRET").expect("JWT_SECRET must be set");
     let now = Utc::now();
+
+    let role_string = match role {
+        Some(UserRole::Admin) => Some("admin".to_string()),
+        Some(UserRole::User) => Some("user".to_string()),
+        None => Some("user".to_string()),
+    };
 
     let claims = Claims {
         sub: email.to_string(),
         iat: now.timestamp() as usize,
         exp: (now + Duration::hours(24)).timestamp() as usize,
         user_id: user_id.to_string(),
+        role: role_string,
     };
 
     let header = Header::new(Algorithm::HS256);

@@ -1,4 +1,4 @@
-use crate::{middleware::auth::Claims, models::itinerary::ItinerarySubmission};
+use crate::{middleware::auth::Claims, models::itinerary::base::ItinerarySubmission};
 use actix_web::{web, HttpResponse, Responder};
 use mongodb::{bson::oid::ObjectId, Client};
 use std::sync::Arc;
