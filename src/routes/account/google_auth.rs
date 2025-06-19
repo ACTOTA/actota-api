@@ -3,10 +3,9 @@ use bson::{doc, oid::ObjectId};
 use chrono::Utc;
 use mongodb::Client;
 use oauth2::AuthorizationCode;
-use oauth2::CsrfToken;
 use std::sync::Arc;
 
-use crate::models::account::User;
+use crate::models::account::{User, UserRole};
 use crate::models::google_auth::GoogleAuthCallbackParams;
 use crate::routes::account::auth::generate_token;
 use crate::services::google_auth_service::{
@@ -15,8 +14,12 @@ use crate::services::google_auth_service::{
 
 // Initiate Google OAuth flow
 pub async fn google_auth_init() -> impl Responder {
+    println!("Initiating Google OAuth flow...");
     let client = create_google_oauth_client();
     let (auth_url, csrf_token) = get_google_auth_url(&client);
+
+    println!("Generated auth URL: {}", auth_url);
+    println!("CSRF token: {}", csrf_token.secret());
 
     // In a production app, you should store this CSRF token in a secure session
     // or encrypted cookie to validate in the callback
@@ -32,8 +35,11 @@ pub async fn google_auth_callback(
     data: web::Data<Arc<Client>>,
     query: web::Query<GoogleAuthCallbackParams>,
 ) -> impl Responder {
+    println!("Google OAuth callback received with params: {:?}", query);
+    
     // Validate the callback
     if let Some(error) = &query.error {
+        eprintln!("OAuth error received: {}", error);
         return HttpResponse::BadRequest().body(format!("OAuth error: {}", error));
     }
 
@@ -41,15 +47,27 @@ pub async fn google_auth_callback(
     let code = AuthorizationCode::new(query.code.clone());
 
     // Exchange the authorization code for an access token
+    println!("Exchanging code for token...");
     let access_token = match exchange_code_for_token(&client, code).await {
-        Ok(token) => token,
-        Err(e) => return HttpResponse::InternalServerError().body(format!("Token error: {}", e)),
+        Ok(token) => {
+            println!("Successfully obtained access token");
+            token
+        },
+        Err(e) => {
+            eprintln!("Failed to exchange code for token: {}", e);
+            return HttpResponse::InternalServerError().body(format!("Token error: {}", e))
+        },
     };
 
     // Get user info using the access token
+    println!("Fetching user info from Google...");
     let user_info = match get_google_user_info(&access_token).await {
-        Ok(info) => info,
+        Ok(info) => {
+            println!("Successfully obtained user info: email={}", info.email);
+            info
+        },
         Err(e) => {
+            eprintln!("Failed to get user info: {}", e);
             return HttpResponse::InternalServerError().body(format!("User info error: {}", e))
         }
     };
@@ -78,7 +96,7 @@ pub async fn google_auth_callback(
             }
 
             // Generate JWT token
-            match generate_token(&existing_user.email, existing_user.id.unwrap()) {
+            match generate_token(&existing_user.email, existing_user.id.unwrap(), existing_user.role.as_ref()) {
                 Ok(token) => {
                     let frontend_url = std::env::var("FRONTEND_URL")
                         .unwrap_or("http://localhost:3000".to_string());
@@ -106,7 +124,9 @@ pub async fn google_auth_callback(
                 last_signin: Some(now),
                 last_signin_ip: None,
                 failed_signins: Some(0),
+                role: Some(UserRole::User),
                 notification: None,
+                profile_picture: None,
                 created_at: Some(now),
                 updated_at: Some(now),
             };
@@ -116,10 +136,13 @@ pub async fn google_auth_callback(
                     let user_id = result.inserted_id.as_object_id().unwrap();
 
                     // Generate JWT token
-                    match generate_token(&new_user.email, user_id) {
+                    match generate_token(&new_user.email, user_id, new_user.role.as_ref()) {
                         Ok(token) => {
                             // Redirect to frontend with token
-                            let redirect_url = format!("/?token={}", token);
+                            let frontend_url = std::env::var("FRONTEND_URL")
+                                .unwrap_or("http://localhost:3000".to_string());
+                            let redirect_url = format!("{}/?token={}", frontend_url, token);
+                            println!("Redirecting to frontend with token: {}", redirect_url);
                             HttpResponse::Found()
                                 .insert_header((header::LOCATION, redirect_url))
                                 .finish()

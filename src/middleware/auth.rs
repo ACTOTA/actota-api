@@ -14,6 +14,7 @@ pub struct Claims {
     pub exp: usize,  // expiration time
     pub iat: usize,  // issued at
     pub user_id: String,
+    pub role: Option<String>, // User role (admin, user, etc.)
 }
 impl FromRequest for Claims {
     type Error = Error;
@@ -25,6 +26,7 @@ impl FromRequest for Claims {
             sub: "0".to_string(),
             iat: 0,
             user_id: "0".to_string(),
+            role: None,
         };
 
         match req.extensions().get::<Claims>() {
@@ -82,7 +84,7 @@ where
                     println!("Key: {}", key);
                     let mut validation = Validation::new(Algorithm::HS256);
                     validation.validate_exp = true;
-                    validation.set_required_spec_claims(&["exp", "iat", "sub", "user_id"]);
+                    validation.set_required_spec_claims(&["exp", "iat", "sub", "user_id", "role"]);
 
                     match decode::<Claims>(
                         token,
@@ -90,6 +92,7 @@ where
                         &validation,
                     ) {
                         Ok(token_data) => {
+                            println!("Token decoded successfully. Claims: {:?}", token_data.claims);
                             req.extensions_mut().insert(token_data.claims);
                             return Box::pin(self.service.call(req));
                         }

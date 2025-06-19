@@ -1,7 +1,13 @@
 pub mod account_service;
+pub mod distance_service;
 pub mod facebook_auth_service;
 pub mod google_auth_service;
+pub mod image_service;
+pub mod itinerary_generation_service;
 pub mod itinerary_search_service;
 pub mod itinerary_service;
 pub mod payment;
+pub mod route_optimization_service;
+pub mod search_scoring;
 pub mod stripe;
+pub mod vertex_search_service;
