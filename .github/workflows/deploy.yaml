@@ -12,7 +12,7 @@ env:
   RUST_ENV: ${{vars.RUST_ENV}}
   FACEBOOK_CLIENT_ID: ${{secrets.FACEBOOK_CLIENT_ID}}
   FACEBOOK_CLIENT_SECRET: ${{secrets.FACEBOOK_CLIENT_SECRET}}
-  GOOGLE_CLIENT_ID: ${{secrets.GOOGLE_CLIENT_ID}}
+  # GOOGLE_CLIENT_ID: Using Google Cloud Secret Manager instead
   GOOGLE_CLIENT_SECRET: ${{secrets.GOOGLE_CLIENT_SECRET}}
   JWT_SECRET: ${{secrets.JWT_SECRET}}
   MONGODB_URI: ${{secrets.MONGODB_URI}}
@@ -57,7 +57,7 @@ jobs:
         run: |
           cat > env.yaml << EOF
           FACEBOOK_CLIENT_ID: "${{ env.FACEBOOK_CLIENT_ID }}"
-          GOOGLE_CLIENT_ID: "${{ env.GOOGLE_CLIENT_ID }}"
+          # GOOGLE_CLIENT_ID: Using Google Cloud Secret Manager instead
           CLOUD_STORAGE_URL: "${{ env.CLOUD_STORAGE_URL }}"
           FACEBOOK_REDIRECT_URI: "${{ env.FACEBOOK_REDIRECT_URI }}"
           GOOGLE_REDIRECT_URI: "${{ env.GOOGLE_REDIRECT_URI }}"
@@ -80,7 +80,7 @@ jobs:
             --platform managed \
             --service-account=actota-api@${PROJECT_ID}.iam.gserviceaccount.com \
             --env-vars-file=env.yaml \
-            --update-secrets=FACEBOOK_CLIENT_SECRET=FACEBOOK_CLIENT_SECRET:latest,GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET:latest,JWT_SECRET=JWT_SECRET:latest,MONGODB_URI=MONGODB_URI_UAT:latest,STRIPE_SECRET_KEY=STRIPE_SECRET_KEY:latest,STRIPE_WEBHOOK_SECRET=STRIPE_WEBHOOK_SECRET:latest,GOOGLE_MAPS_API_KEY=GOOGLE_MAPS_API_KEY:latest,SENDGRID_API_KEY=SENDGRID_API_KEY:latest \
+            --update-secrets=FACEBOOK_CLIENT_SECRET=FACEBOOK_CLIENT_SECRET:latest,GOOGLE_CLIENT_ID=GOOGLE_CLIENT_ID:latest,GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET:latest,JWT_SECRET=JWT_SECRET:latest,MONGODB_URI=MONGODB_URI_UAT:latest,STRIPE_SECRET_KEY=STRIPE_SECRET_KEY:latest,STRIPE_WEBHOOK_SECRET=STRIPE_WEBHOOK_SECRET:latest,GOOGLE_MAPS_API_KEY=GOOGLE_MAPS_API_KEY:latest,SENDGRID_API_KEY=SENDGRID_API_KEY:latest \
             --allow-unauthenticated
 
   deploy-prod:
@@ -106,7 +106,7 @@ jobs:
         run: |
           cat > env.yaml << EOF
           FACEBOOK_CLIENT_ID: "${{ env.FACEBOOK_CLIENT_ID }}"
-          GOOGLE_CLIENT_ID: "${{ env.GOOGLE_CLIENT_ID }}"
+          # GOOGLE_CLIENT_ID: Using Google Cloud Secret Manager instead
           CLOUD_STORAGE_URL: "${{ env.CLOUD_STORAGE_URL }}"
           FACEBOOK_REDIRECT_URI: "${{ env.FACEBOOK_REDIRECT_URI }}"
           GOOGLE_REDIRECT_URI: "${{ env.GOOGLE_REDIRECT_URI }}"
@@ -129,5 +129,5 @@ jobs:
             --platform managed \
             --service-account=actota-api@${PROJECT_ID}.iam.gserviceaccount.com \
             --env-vars-file=env.yaml \
-            --update-secrets=FACEBOOK_CLIENT_SECRET=FACEBOOK_CLIENT_SECRET:latest,GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET:latest,JWT_SECRET=JWT_SECRET:latest,MONGODB_URI=MONGODB_URI:latest,STRIPE_SECRET_KEY=STRIPE_SECRET_KEY:latest,STRIPE_WEBHOOK_SECRET=STRIPE_WEBHOOK_SECRET:latest,GOOGLE_MAPS_API_KEY=GOOGLE_MAPS_API_KEY:latest,SENDGRID_API_KEY=SENDGRID_API_KEY:latest \
+            --update-secrets=FACEBOOK_CLIENT_SECRET=FACEBOOK_CLIENT_SECRET:latest,GOOGLE_CLIENT_ID=GOOGLE_CLIENT_ID:latest,GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET:latest,JWT_SECRET=JWT_SECRET:latest,MONGODB_URI=MONGODB_URI:latest,STRIPE_SECRET_KEY=STRIPE_SECRET_KEY:latest,STRIPE_WEBHOOK_SECRET=STRIPE_WEBHOOK_SECRET:latest,GOOGLE_MAPS_API_KEY=GOOGLE_MAPS_API_KEY:latest,SENDGRID_API_KEY=SENDGRID_API_KEY:latest \
             --allow-unauthenticated
