@@ -74,7 +74,7 @@ pub struct ScoredItinerary {
     pub score_breakdown: ScoreBreakdown,
 }
 
-#[derive(Debug, Clone, Serialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ScoreBreakdown {
     pub location_score: f32,
     pub activity_score: f32,

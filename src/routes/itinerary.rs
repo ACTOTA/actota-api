@@ -291,7 +291,7 @@ pub async fn search_itineraries_endpoint(
     let min_results_threshold = std::env::var("MIN_SEARCH_RESULTS")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
-        .unwrap_or(3); // Default to 3 minimum results
+        .unwrap_or(5); // Default to 5 minimum results to ensure generation
 
     println!(
         "Using search-or-generate with threshold: {}",
@@ -350,34 +350,37 @@ pub async fn search_itineraries_endpoint(
                             Ok(mut populated) => {
                                 // Apply scores if found
                                 if let Some(scored) = scored_result {
-                                    let normalized_score =
-                                        (scored.total_score / max_possible_score * 100.0) as u8;
+                                    // Normalize total score to 0-100 scale
+                                    let normalized_score = if max_possible_score > 0.0 {
+                                        ((scored.total_score / max_possible_score) * 100.0).min(100.0).max(0.0) as u8
+                                    } else {
+                                        0
+                                    };
                                     populated.set_match_score(normalized_score);
 
-                                    // Normalize score breakdown to 0-100 range
+                                    // Normalize individual score components to 0-100 range
                                     let mut normalized_breakdown = scored.score_breakdown.clone();
-                                    normalized_breakdown.location_score =
-                                        (normalized_breakdown.location_score / max_possible_score
-                                            * 100.0)
-                                            .round();
-                                    normalized_breakdown.activity_score =
-                                        (normalized_breakdown.activity_score / max_possible_score
-                                            * 100.0)
-                                            .round();
-                                    normalized_breakdown.group_size_score = (normalized_breakdown
-                                        .group_size_score
-                                        / max_possible_score
-                                        * 100.0)
-                                        .round();
-                                    normalized_breakdown.lodging_score =
-                                        (normalized_breakdown.lodging_score / max_possible_score
-                                            * 100.0)
-                                            .round();
-                                    normalized_breakdown.transportation_score =
-                                        (normalized_breakdown.transportation_score
-                                            / max_possible_score
-                                            * 100.0)
-                                            .round();
+                                    
+                                    // Normalize each component based on its maximum possible weight
+                                    normalized_breakdown.location_score = if scorer.weights.location_weight > 0.0 {
+                                        ((normalized_breakdown.location_score / scorer.weights.location_weight) * 100.0).min(100.0).max(0.0)
+                                    } else { 0.0 };
+                                    
+                                    normalized_breakdown.activity_score = if scorer.weights.activity_weight > 0.0 {
+                                        ((normalized_breakdown.activity_score / scorer.weights.activity_weight) * 100.0).min(100.0).max(0.0)
+                                    } else { 0.0 };
+                                    
+                                    normalized_breakdown.group_size_score = if scorer.weights.group_size_weight > 0.0 {
+                                        ((normalized_breakdown.group_size_score / scorer.weights.group_size_weight) * 100.0).min(100.0).max(0.0)
+                                    } else { 0.0 };
+                                    
+                                    normalized_breakdown.lodging_score = if scorer.weights.lodging_weight > 0.0 {
+                                        ((normalized_breakdown.lodging_score / scorer.weights.lodging_weight) * 100.0).min(100.0).max(0.0)
+                                    } else { 0.0 };
+                                    
+                                    normalized_breakdown.transportation_score = if scorer.weights.transportation_weight > 0.0 {
+                                        ((normalized_breakdown.transportation_score / scorer.weights.transportation_weight) * 100.0).min(100.0).max(0.0)
+                                    } else { 0.0 };
 
                                     populated.set_score_breakdown(normalized_breakdown);
                                 }
@@ -407,6 +410,15 @@ pub async fn search_itineraries_endpoint(
             for result in populate_results {
                 if let Ok(populated) = result {
                     populated_itineraries.push(populated);
+                }
+            }
+
+            // Copy match scores from populated itineraries to processed itineraries
+            let mut processed_itineraries = processed_itineraries;
+            for processed in &mut processed_itineraries {
+                if let Some(populated) = populated_itineraries.iter().find(|p| p.id() == processed.id) {
+                    processed.match_score = populated.match_score;
+                    processed.score_breakdown = populated.score_breakdown.clone();
                 }
             }
 
@@ -496,34 +508,37 @@ pub async fn search_or_generate(
                             Ok(mut populated) => {
                                 // Apply scores if found
                                 if let Some(scored) = scored_result {
-                                    let normalized_score =
-                                        (scored.total_score / max_possible_score * 100.0) as u8;
+                                    // Normalize total score to 0-100 scale
+                                    let normalized_score = if max_possible_score > 0.0 {
+                                        ((scored.total_score / max_possible_score) * 100.0).min(100.0).max(0.0) as u8
+                                    } else {
+                                        0
+                                    };
                                     populated.set_match_score(normalized_score);
 
-                                    // Normalize score breakdown to 0-100 range
+                                    // Normalize individual score components to 0-100 range
                                     let mut normalized_breakdown = scored.score_breakdown.clone();
-                                    normalized_breakdown.location_score =
-                                        (normalized_breakdown.location_score / max_possible_score
-                                            * 100.0)
-                                            .round();
-                                    normalized_breakdown.activity_score =
-                                        (normalized_breakdown.activity_score / max_possible_score
-                                            * 100.0)
-                                            .round();
-                                    normalized_breakdown.group_size_score = (normalized_breakdown
-                                        .group_size_score
-                                        / max_possible_score
-                                        * 100.0)
-                                        .round();
-                                    normalized_breakdown.lodging_score =
-                                        (normalized_breakdown.lodging_score / max_possible_score
-                                            * 100.0)
-                                            .round();
-                                    normalized_breakdown.transportation_score =
-                                        (normalized_breakdown.transportation_score
-                                            / max_possible_score
-                                            * 100.0)
-                                            .round();
+                                    
+                                    // Normalize each component based on its maximum possible weight
+                                    normalized_breakdown.location_score = if scorer.weights.location_weight > 0.0 {
+                                        ((normalized_breakdown.location_score / scorer.weights.location_weight) * 100.0).min(100.0).max(0.0)
+                                    } else { 0.0 };
+                                    
+                                    normalized_breakdown.activity_score = if scorer.weights.activity_weight > 0.0 {
+                                        ((normalized_breakdown.activity_score / scorer.weights.activity_weight) * 100.0).min(100.0).max(0.0)
+                                    } else { 0.0 };
+                                    
+                                    normalized_breakdown.group_size_score = if scorer.weights.group_size_weight > 0.0 {
+                                        ((normalized_breakdown.group_size_score / scorer.weights.group_size_weight) * 100.0).min(100.0).max(0.0)
+                                    } else { 0.0 };
+                                    
+                                    normalized_breakdown.lodging_score = if scorer.weights.lodging_weight > 0.0 {
+                                        ((normalized_breakdown.lodging_score / scorer.weights.lodging_weight) * 100.0).min(100.0).max(0.0)
+                                    } else { 0.0 };
+                                    
+                                    normalized_breakdown.transportation_score = if scorer.weights.transportation_weight > 0.0 {
+                                        ((normalized_breakdown.transportation_score / scorer.weights.transportation_weight) * 100.0).min(100.0).max(0.0)
+                                    } else { 0.0 };
 
                                     populated.set_score_breakdown(normalized_breakdown);
                                 }
@@ -553,6 +568,15 @@ pub async fn search_or_generate(
             for result in populate_results {
                 if let Ok(populated) = result {
                     populated_itineraries.push(populated);
+                }
+            }
+
+            // Copy match scores from populated itineraries to processed itineraries
+            let mut processed_itineraries = processed_itineraries;
+            for processed in &mut processed_itineraries {
+                if let Some(populated) = populated_itineraries.iter().find(|p| p.id() == processed.id) {
+                    processed.match_score = populated.match_score;
+                    processed.score_breakdown = populated.score_breakdown.clone();
                 }
             }
 

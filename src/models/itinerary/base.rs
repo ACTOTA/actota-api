@@ -94,6 +94,10 @@ pub struct FeaturedVacation {
     pub tag: Option<String>,
     #[serde(default, skip_serializing)]
     pub activities: Option<Vec<Activity>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub match_score: Option<u8>, // Score from 0-100
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub score_breakdown: Option<crate::services::search_scoring::ScoreBreakdown>, // Detailed score breakdown
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]

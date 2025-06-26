@@ -1,0 +1,95 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  annotations:
+    run.googleapis.com/ingress: all
+    run.googleapis.com/ingress-status: all
+    run.googleapis.com/urls: '["https://actota-api-403386996094.us-central1.run.app","https://actota-api-gk3t6zxubq-uc.a.run.app"]'
+  labels:
+    cloud.googleapis.com/location: us-central1
+  name: actota-api
+  namespace: '403386996094'
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/maxScale: '10'
+        run.googleapis.com/client-name: gcloud
+        run.googleapis.com/client-version: 510.0.0
+        run.googleapis.com/startup-cpu-boost: 'true'
+      labels:
+        client.knative.dev/nonce: svktnvjxax
+        run.googleapis.com/startupProbeType: Default
+    spec:
+      containerConcurrency: 80
+      containers:
+      - env:
+        - name: FACEBOOK_CLIENT_ID
+          value: '536393542826375'
+        - name: GOOGLE_CLIENT_ID
+          value: REPLACE_WITH_REAL_GOOGLE_CLIENT_ID
+        - name: CLOUD_STORAGE_URL
+          value: https://storage.googleapis.com
+        - name: FRONTEND_URL
+          value: https://actota-front.vercel.app
+        - name: ITINERARY_BUCKET
+          value: actota-itineraries-uat
+        - name: PROFILE_PIC_BUCKET
+          value: actota-profile-pictures-uat
+        - name: ACTIVITY_BUCKET
+          value: actota-activity-media-uat
+        - name: RUST_LOG
+          value: actix_web=debug
+        - name: FACEBOOK_REDIRECT_URI
+          value: https://actota-api-403386996094.us-central1.run.app/api/auth/facebook/callback
+        - name: GOOGLE_REDIRECT_URI
+          value: https://actota-api-403386996094.us-central1.run.app/api/auth/google/callback
+        - name: FACEBOOK_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              key: latest
+              name: FACEBOOK_CLIENT_SECRET
+        - name: GOOGLE_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              key: latest
+              name: GOOGLE_CLIENT_SECRET
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              key: latest
+              name: JWT_SECRET
+        - name: STRIPE_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              key: latest
+              name: STRIPE_SECRET_KEY
+        - name: STRIPE_WEBHOOK_SECRET
+          valueFrom:
+            secretKeyRef:
+              key: latest
+              name: STRIPE_WEBHOOK_SECRET
+        - name: MONGODB_URI
+          valueFrom:
+            secretKeyRef:
+              key: latest
+              name: MONGODB_URI_UAT
+        image: gcr.io/actota/actota-api:da7823e1436e786274b0bbb3624bfd77668d7cc7
+        ports:
+        - containerPort: 8080
+          name: http1
+        resources:
+          limits:
+            cpu: '1'
+            memory: 512Mi
+        startupProbe:
+          failureThreshold: 1
+          periodSeconds: 240
+          tcpSocket:
+            port: 8080
+          timeoutSeconds: 240
+      serviceAccountName: actota-api@actota-uat.iam.gserviceaccount.com
+      timeoutSeconds: 300
+  traffic:
+  - latestRevision: true
+    percent: 100

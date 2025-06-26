@@ -1,0 +1,55 @@
+swagger: "2.0"
+info:
+  title: "ACTOTA API"
+  description: "ACTOTA Production API with API key authentication"
+  version: "1.0.0"
+host: "actota-api-7g4csnbc2a-uc.a.run.app"
+schemes:
+  - "https"
+produces:
+  - "application/json"
+securityDefinitions:
+  api_key:
+    type: "apiKey"
+    name: "key"
+    in: "query"
+security:
+  - api_key: []
+paths:
+  "/**":
+    get:
+      operationId: "get_all"
+      security:
+        - api_key: []
+      responses:
+        200:
+          description: "Success"
+    post:
+      operationId: "post_all"
+      security:
+        - api_key: []
+      responses:
+        200:
+          description: "Success"
+    put:
+      operationId: "put_all"
+      security:
+        - api_key: []
+      responses:
+        200:
+          description: "Success"
+    delete:
+      operationId: "delete_all"
+      security:
+        - api_key: []
+      responses:
+        200:
+          description: "Success"
+    patch:
+      operationId: "patch_all"
+      security:
+        - api_key: []
+      responses:
+        200:
+          description: "Success"
+

@@ -1,0 +1,49 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  annotations:
+    run.googleapis.com/ingress: all
+    run.googleapis.com/ingress-status: all
+  labels:
+    cloud.googleapis.com/location: us-central1
+  name: activities-sync
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/maxScale: '100'
+        run.googleapis.com/client-name: gcloud
+        run.googleapis.com/startup-cpu-boost: 'true'
+      labels:
+        run.googleapis.com/startupProbeType: Default
+    spec:
+      containerConcurrency: 80
+      containers:
+      - env:
+        - name: VERTEX_SEARCH_BUCKET
+          value: actota-activities-prod
+        - name: MONGODB_URI
+          valueFrom:
+            secretKeyRef:
+              key: latest
+              name: MONGODB_URI
+        image: us-central1-docker.pkg.dev/actota/cloud-run-source-deploy/activities-sync@sha256:23b200cfcc37d52bb9b2731734280e4ecf155b8db95160db717ed575d2748100
+        ports:
+        - containerPort: 8080
+          name: http1
+        resources:
+          limits:
+            cpu: '1'
+            memory: 512Mi
+        startupProbe:
+          failureThreshold: 1
+          periodSeconds: 240
+          tcpSocket:
+            port: 8080
+          timeoutSeconds: 240
+      serviceAccountName: 88694943961-compute@developer.gserviceaccount.com
+      timeoutSeconds: 300
+  traffic:
+  - latestRevision: true
+    percent: 100
+

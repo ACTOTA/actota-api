@@ -165,6 +165,8 @@ impl VertexSearchService {
     fn build_search_query(&self, activity_types: &[String], additional_query: &str) -> String {
         let mut query_parts = Vec::new();
         
+        println!("Building Vertex AI Search query with activity_types: {:?}, location: '{}'", activity_types, additional_query);
+        
         // Add activity types as search terms
         if !activity_types.is_empty() {
             query_parts.extend(activity_types.iter().cloned());
@@ -176,11 +178,14 @@ impl VertexSearchService {
         }
         
         // Join all search terms with spaces for natural language search
-        if query_parts.is_empty() {
+        let final_query = if query_parts.is_empty() {
             "activities".to_string() // Default search term
         } else {
             query_parts.join(" ")
-        }
+        };
+        
+        println!("🔍 Final Vertex AI Search Query: '{}'", final_query);
+        final_query
     }
 
 

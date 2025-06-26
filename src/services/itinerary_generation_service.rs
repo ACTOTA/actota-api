@@ -115,6 +115,8 @@ impl ItineraryGenerator {
                     })
                     .collect(),
             ),
+            match_score: None, // Will be set during search scoring
+            score_breakdown: None, // Will be set during search scoring
         };
 
         Ok(generated_itinerary)
@@ -125,24 +127,33 @@ impl ItineraryGenerator {
         &self,
         search_params: &SearchItinerary,
     ) -> Result<Vec<Activity>, mongodb::error::Error> {
-        // Try Vertex AI first
+        // Always try Vertex AI first - even with minimal search criteria
         if let Some(ref vertex_service) = self.vertex_search_service {
-            if let Some(activities) = &search_params.activities {
-                let query = search_params
-                    .locations
-                    .as_ref()
-                    .map(|locs| locs.join(" "))
-                    .unwrap_or_default();
+            // Build query from available search parameters
+            let activities_query = search_params
+                .activities
+                .as_ref()
+                .unwrap_or(&vec!["outdoor".to_string(), "adventure".to_string(), "sightseeing".to_string()])
+                .clone();
+            
+            let location_query = search_params
+                .locations
+                .as_ref()
+                .map(|locs| locs.join(" "))
+                .unwrap_or_default();
 
-                if let Ok(vertex_response) =
-                    vertex_service.search_activities(activities, &query).await
-                {
-                    if !vertex_response.results.is_empty() {
-                        let mut vertex_activities = Vec::new();
-                        let collection: Collection<Activity> =
-                            self.client.database("Itineraries").collection("Activities");
+            println!("Trying Vertex AI search with activities: {:?}, location: {}", activities_query, location_query);
 
-                        for result in vertex_response.results.iter() {
+            if let Ok(vertex_response) =
+                vertex_service.search_activities(&activities_query, &location_query).await
+            {
+                if !vertex_response.results.is_empty() {
+                    println!("Vertex AI returned {} activity results", vertex_response.results.len());
+                    let mut vertex_activities = Vec::new();
+                    let _collection: Collection<Activity> =
+                        self.client.database("Itineraries").collection("Activities");
+
+                    for result in vertex_response.results.iter() {
                             // Transform Vertex AI document to match Activity struct format
                             let mut vertex_data = result.document.struct_data.clone();
                             
@@ -206,31 +217,52 @@ impl ItineraryGenerator {
                                     data_obj.insert("capacity".to_string(), capacity);
                                 }
 
-                                // Rename _id to id if needed for proper ObjectId parsing
-                                if let Some(id_val) = data_obj.remove("id") {
-                                    data_obj.insert("_id".to_string(), id_val);
+                                // Handle ID field - Vertex AI returns 'id' as string, convert to ObjectId
+                                if let Some(id_val) = data_obj.get("id") {
+                                    if let Some(id_str) = id_val.as_str() {
+                                        // Try to parse the string as an ObjectId
+                                        if let Ok(object_id) = ObjectId::parse_str(id_str) {
+                                            // Insert as proper ObjectId for _id field
+                                            data_obj.insert("_id".to_string(), serde_json::json!({
+                                                "$oid": id_str
+                                            }));
+                                        } else {
+                                            println!("Warning: Invalid ObjectId format from Vertex AI: {}", id_str);
+                                        }
+                                    }
                                 }
                             }
 
                             // Try to parse the transformed document as an Activity
                             match serde_json::from_value::<Activity>(vertex_data) {
-                                Ok(activity) => {
-                                    println!("VERTEX ID: {:?}", activity.id);
+                                Ok(mut activity) => {
+                                    // If the ID wasn't properly parsed, try to extract it manually
+                                    if activity.id.is_none() {
+                                        if let Some(id_val) = result.document.struct_data.get("id") {
+                                            if let Some(id_str) = id_val.as_str() {
+                                                if let Ok(object_id) = ObjectId::parse_str(id_str) {
+                                                    activity.id = Some(object_id);
+                                                    println!("Manually set VERTEX ID: {:?}", object_id);
+                                                }
+                                            }
+                                        }
+                                    }
+                                    println!("FINAL VERTEX ID: {:?}", activity.id);
                                     vertex_activities.push(activity);
                                 }
                                 Err(e) => {
                                     println!("Failed to parse Vertex AI document as Activity: {}", e);
+                                    println!("Document data: {:?}", result.document.struct_data);
                                 }
                             }
                         }
 
-                        if !vertex_activities.is_empty() {
-                            println!(
-                                "Found {} activities using Vertex AI",
-                                vertex_activities.len()
-                            );
-                            return Ok(vertex_activities);
-                        }
+                    if !vertex_activities.is_empty() {
+                        println!(
+                            "Found {} activities using Vertex AI",
+                            vertex_activities.len()
+                        );
+                        return Ok(vertex_activities);
                     }
                 }
             }
@@ -333,6 +365,11 @@ impl ItineraryGenerator {
         activities: &[Activity],
         trip_duration_days: u32,
     ) -> Result<HashMap<String, Vec<DayItem>>, Box<dyn std::error::Error>> {
+        println!("📅 Generating schedules for {} activities:", activities.len());
+        for (i, activity) in activities.iter().enumerate() {
+            println!("   Activity {}: ID={:?}, Title={}", i+1, activity.id, activity.title);
+        }
+        
         let mut days = HashMap::new();
         let activities_per_day = std::cmp::min(3, activities.len());
 

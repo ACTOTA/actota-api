@@ -1,0 +1,78 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  annotations:
+    run.googleapis.com/ingress: all
+    run.googleapis.com/ingress-status: all
+  labels:
+    cloud.googleapis.com/location: us-central1
+  name: actota-api
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/maxScale: '10'
+        run.googleapis.com/client-name: gcloud
+        run.googleapis.com/startup-cpu-boost: 'true'
+      labels:
+        run.googleapis.com/startupProbeType: Default
+    spec:
+      containerConcurrency: 80
+      containers:
+      - env:
+        - name: FACEBOOK_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              key: latest
+              name: FACEBOOK_CLIENT_SECRET
+        - name: GOOGLE_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              key: latest
+              name: GOOGLE_CLIENT_SECRET
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              key: latest
+              name: JWT_SECRET
+        - name: STRIPE_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              key: latest
+              name: STRIPE_SECRET_KEY
+        - name: STRIPE_WEBHOOK_SECRET
+          valueFrom:
+            secretKeyRef:
+              key: latest
+              name: STRIPE_WEBHOOK_SECRET
+        - name: MONGODB_URI
+          valueFrom:
+            secretKeyRef:
+              key: latest
+              name: MONGODB_URI
+        - name: GOOGLE_CLIENT_ID
+          value: 88694943961-ijhf89tfhd9b9nb5ppvt9lpqvaslk610.apps.googleusercontent.com
+        - name: GOOGLE_REDIRECT_URI
+          value: https://api.actota.com/auth/google/callback
+        - name: FRONTEND_URL
+          value: https://actota.com
+        image: gcr.io/actota/actota-api:c9ac97f9adcafbd2d13791d06c83b0fdaa4ee2ee
+        ports:
+        - containerPort: 8080
+          name: http1
+        resources:
+          limits:
+            cpu: '1'
+            memory: 512Mi
+        startupProbe:
+          failureThreshold: 1
+          periodSeconds: 240
+          tcpSocket:
+            port: 8080
+          timeoutSeconds: 240
+      serviceAccountName: actota-api@actota-prod.iam.gserviceaccount.com
+      timeoutSeconds: 300
+  traffic:
+  - latestRevision: true
+    percent: 100
+

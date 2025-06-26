@@ -1,9 +1,10 @@
 use crate::models::{itinerary::base::FeaturedVacation, search::SearchItinerary};
 use crate::services::itinerary_generation_service::ItineraryGenerator;
 use bson::{doc, Document};
-use futures::TryStreamExt;
+use futures::{TryStreamExt, StreamExt};
 use mongodb::{Client, Collection};
 use std::sync::Arc;
+use chrono::{DateTime, Utc, Duration};
 
 pub async fn search_itineraries(
     client: Arc<Client>,
@@ -197,6 +198,34 @@ pub async fn search_or_generate_itineraries(
     // Check if we have the required fields for generation
     if search_params.arrival_datetime.is_none() || search_params.departure_datetime.is_none() {
         println!("Cannot generate itinerary without arrival and departure dates, returning existing results (including partial matches)");
+        
+        // If we have no results at all and no dates for generation, try a more flexible search
+        if results.is_empty() {
+            println!("No results found, attempting flexible search without strict criteria");
+            match try_flexible_search(&client.database("Itineraries").collection("Featured"), &search_params).await {
+                Ok(flexible_results) => {
+                    println!("Flexible search found {} results", flexible_results.len());
+                    return Ok(flexible_results);
+                }
+                Err(e) => {
+                    println!("Flexible search failed: {:?}", e);
+                }
+            }
+        }
+        
+        println!("Attempting to find activities using Vertex AI without dates");
+        match find_and_generate_itineraries(client, &search_params).await {
+            Ok(generated_itineraries) => {
+                if !generated_itineraries.is_empty() {
+                    println!("Generated itineraries from search and AI generated activities");
+                    results.extend(generated_itineraries);
+                }
+            }
+            Err(e) => {
+                println!("Failed to generate itineraries from Vertex AI: {:?}", e);
+            }
+        }
+
         return Ok(results);
     }
 
@@ -356,4 +385,162 @@ async fn try_location_only_search(
     let cursor = collection.find(filter).limit(5).await?;
     let itineraries = cursor.try_collect().await?;
     Ok(itineraries)
+}
+
+/// Very flexible search when all other searches fail
+/// Returns a sample of itineraries based on any available criteria, or just recent ones
+async fn try_flexible_search(
+    collection: &Collection<FeaturedVacation>,
+    search_params: &SearchItinerary,
+) -> Result<Vec<FeaturedVacation>, mongodb::error::Error> {
+    let mut filter = Document::new();
+    
+    // Try to match on any single criterion
+    let mut or_conditions = Vec::new();
+    
+    // Add location conditions if available
+    if let Some(locations) = &search_params.locations {
+        if !locations.is_empty() {
+            for location in locations {
+                let parts = location.split(',').collect::<Vec<&str>>();
+                let city = if parts.len() > 1 {
+                    parts[0].trim().to_string()
+                } else {
+                    location.trim().to_string()
+                };
+                
+                or_conditions.push(doc! { "start_location.city": { "$regex": city.clone(), "$options": "i" } });
+                or_conditions.push(doc! { "end_location.city": { "$regex": city, "$options": "i" } });
+            }
+        }
+    }
+    
+    // Add activity conditions if available
+    if let Some(activities) = &search_params.activities {
+        if !activities.is_empty() {
+            for activity in activities {
+                or_conditions.push(doc! {
+                    "activities": {
+                        "$elemMatch": {
+                            "label": {
+                                "$regex": activity,
+                                "$options": "i"
+                            }
+                        }
+                    }
+                });
+            }
+        }
+    }
+    
+    // If we have any conditions, use them
+    if !or_conditions.is_empty() {
+        let or_conditions_bson: Vec<bson::Bson> = or_conditions
+            .into_iter()
+            .map(bson::Bson::Document)
+            .collect();
+        filter.insert("$or", or_conditions_bson);
+    }
+    
+    // Add group size filter if available
+    if let Some(adults) = search_params.adults {
+        filter.insert("max_group", doc! { "$gte": adults });
+    }
+    
+    // If still no filter criteria, just get recent itineraries
+    let cursor = if filter.is_empty() {
+        println!("No search criteria available, returning recent itineraries");
+        // Don't sort by created_at to avoid DateTime deserialization issues
+        collection
+            .find(doc! {})
+            .limit(10)
+            .await?
+    } else {
+        collection.find(filter).limit(10).await?
+    };
+    
+    // Use a more lenient collection approach to handle data inconsistencies
+    let mut itineraries = Vec::new();
+    let mut cursor = cursor;
+    
+    while let Ok(Some(doc)) = cursor.try_next().await {
+        itineraries.push(doc);
+        // Stop if we have enough results
+        if itineraries.len() >= 5 {
+            break;
+        }
+    }
+    
+    println!("Flexible search successfully found {} itineraries", itineraries.len());
+    Ok(itineraries)
+}
+
+/// Find activities using Vertex AI Search and generate itineraries from them
+async fn find_and_generate_itineraries(
+    client: Arc<Client>,
+    search_params: &SearchItinerary,
+) -> Result<Vec<FeaturedVacation>, Box<dyn std::error::Error>> {
+    let generator = ItineraryGenerator::new(client.clone());
+    let mut generated_itineraries = Vec::new();
+    
+    // Create a modified search params with default dates for generation
+    let mut modified_params = search_params.clone();
+    
+    // If no dates provided, use default dates (next week for a 3-day trip)
+    if modified_params.arrival_datetime.is_none() {
+        let now = chrono::Utc::now();
+        let next_week = now + chrono::Duration::days(7);
+        modified_params.arrival_datetime = Some(next_week.format("%Y-%m-%dT%H:%M:%S").to_string());
+    }
+    
+    if modified_params.departure_datetime.is_none() {
+        let arrival = chrono::DateTime::parse_from_rfc3339(
+            &modified_params.arrival_datetime.as_ref().unwrap()
+        ).unwrap_or_else(|_| {
+            let now = chrono::Utc::now();
+            let next_week = now + chrono::Duration::days(7);
+            next_week.into()
+        });
+        
+        let departure = arrival + chrono::Duration::days(3); // Default to 3-day trip
+        modified_params.departure_datetime = Some(departure.format("%Y-%m-%dT%H:%M:%S").to_string());
+    }
+    
+    // Try to generate up to 5-10 itineraries for better variety
+    let target_count = if generated_itineraries.is_empty() { 10 } else { 5 };
+    
+    for i in 1..=target_count {
+        match generator.generate_itinerary(&modified_params).await {
+            Ok(generated_itinerary) => {
+                println!(
+                    "Successfully generated itinerary {}: {}",
+                    i, generated_itinerary.trip_name
+                );
+                
+                // Save the generated itinerary to the database
+                let collection: Collection<FeaturedVacation> =
+                    client.database("Itineraries").collection("Featured");
+                match collection.insert_one(&generated_itinerary).await {
+                    Ok(insert_result) => {
+                        println!(
+                            "Saved generated itinerary {} to database with ID: {:?}",
+                            i, insert_result.inserted_id
+                        );
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to save generated itinerary to database: {}", e);
+                        // Continue anyway - the itinerary is still useful for this request
+                    }
+                }
+                
+                generated_itineraries.push(generated_itinerary);
+            }
+            Err(e) => {
+                eprintln!("Failed to generate itinerary {}: {}", i, e);
+                // Continue trying to generate more
+            }
+        }
+    }
+    
+    Ok(generated_itineraries)
 }
