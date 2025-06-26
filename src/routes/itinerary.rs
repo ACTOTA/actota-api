@@ -1,6 +1,7 @@
 use crate::models::itinerary::base::{Activity, ItinerarySubmission};
 use crate::models::itinerary::populated::PopulatedFeaturedVacation;
 use crate::models::{itinerary::base::FeaturedVacation, search::SearchItinerary};
+use crate::models::search_response::{SearchResponseItem, PopulatedDayItem, ActivitySummary};
 use crate::services::itinerary_search_service::search_or_generate_itineraries;
 use crate::services::itinerary_service::get_images;
 use crate::services::search_scoring::AsyncSearchScorer;
@@ -10,6 +11,7 @@ use futures::TryStreamExt;
 use mongodb::{bson::oid::ObjectId, Client};
 use serde::Deserialize;
 use std::sync::Arc;
+use std::collections::HashMap;
 
 #[derive(Deserialize)]
 pub struct PaginationQuery {
@@ -315,6 +317,13 @@ pub async fn search_itineraries_endpoint(
                 "Found/generated {} itineraries for frontend search",
                 itineraries.len()
             );
+            
+            // Debug: Log each itinerary
+            for (i, itinerary) in itineraries.iter().enumerate() {
+                println!("Itinerary {}: {} - {} days with {} total day items", 
+                    i, itinerary.trip_name, itinerary.length_days, 
+                    itinerary.days.days.values().map(|v| v.len()).sum::<usize>());
+            }
 
             // Process images for all itineraries
             let processed_itineraries = get_images(itineraries).await;
@@ -424,12 +433,22 @@ pub async fn search_itineraries_endpoint(
                 if let Some(populated) = populated_itineraries.iter().find(|p| p.id() == processed.id) {
                     processed.match_score = populated.match_score;
                     processed.score_breakdown = populated.score_breakdown.clone();
+                    println!("   📊 Copied scores to {}: match_score={:?}, breakdown={:?}", 
+                        processed.trip_name, processed.match_score, processed.score_breakdown.is_some());
                 }
             }
 
-            // Return the base itineraries (not populated) to match expected frontend format
-            // The populated version includes full activity objects which are too verbose for the frontend
-            HttpResponse::Ok().json(processed_itineraries)
+            // Debug: Log processed itineraries count and scores
+            println!("About to transform {} processed itineraries", processed_itineraries.len());
+            for (i, itinerary) in processed_itineraries.iter().enumerate() {
+                println!("   🔢 Itinerary {}: {} - Score: {:?}", i, itinerary.trip_name, itinerary.match_score);
+            }
+            
+            // Transform to the custom response format with populated activities
+            let response_items = transform_to_search_response(&client, processed_itineraries).await;
+            
+            println!("Transformed to {} response items", response_items.len());
+            HttpResponse::Ok().json(response_items)
         }
         Err(err) => {
             eprintln!(
@@ -587,16 +606,174 @@ pub async fn search_or_generate(
                 if let Some(populated) = populated_itineraries.iter().find(|p| p.id() == processed.id) {
                     processed.match_score = populated.match_score;
                     processed.score_breakdown = populated.score_breakdown.clone();
+                    println!("   📊 Copied scores to {}: match_score={:?}, breakdown={:?}", 
+                        processed.trip_name, processed.match_score, processed.score_breakdown.is_some());
                 }
             }
 
-            // Return the base itineraries (not populated) to match expected frontend format
-            // The populated version includes full activity objects which are too verbose for the frontend
-            HttpResponse::Ok().json(processed_itineraries)
+            // Debug: Log processed itineraries count and scores
+            println!("About to transform {} processed itineraries", processed_itineraries.len());
+            for (i, itinerary) in processed_itineraries.iter().enumerate() {
+                println!("   🔢 Itinerary {}: {} - Score: {:?}", i, itinerary.trip_name, itinerary.match_score);
+            }
+            
+            // Transform to the custom response format with populated activities
+            let response_items = transform_to_search_response(&client, processed_itineraries).await;
+            
+            println!("Transformed to {} response items", response_items.len());
+            HttpResponse::Ok().json(response_items)
         }
         Err(err) => {
             eprintln!("Failed to search/generate itineraries: {:?}", err);
             HttpResponse::InternalServerError().body("Failed to search or generate itineraries")
         }
     }
+}
+
+
+/// Transform itineraries to the custom search response format with populated activities
+async fn transform_to_search_response(
+    client: &Arc<Client>,
+    itineraries: Vec<FeaturedVacation>,
+) -> Vec<SearchResponseItem> {
+    let mut response_items = Vec::new();
+    let mut seen_ids = std::collections::HashSet::new();
+    
+    // Get activities collection
+    let activities_collection: mongodb::Collection<crate::models::activity::Activity> =
+        client.database("Options").collection("Activity");
+    
+    for itinerary in itineraries {
+        // Skip duplicates
+        if let Some(id) = itinerary.id {
+            if seen_ids.contains(&id) {
+                println!("   ⚠️  Skipping duplicate itinerary: {}", itinerary.trip_name);
+                continue;
+            }
+            seen_ids.insert(id);
+        }
+        let mut populated_days: HashMap<String, Vec<PopulatedDayItem>> = HashMap::new();
+        let mut activity_summaries = Vec::new();
+        
+        // Debug: Log itinerary details
+        println!("🔧 Processing itinerary: {} with {} days (match_score: {:?})", 
+            itinerary.trip_name, itinerary.days.days.len(), itinerary.match_score);
+        
+        // Collect all activity IDs
+        let mut activity_ids = Vec::new();
+        for (day_num, day_items) in &itinerary.days.days {
+            println!("   📋 Day {}: {} items", day_num, day_items.len());
+            for (i, item) in day_items.iter().enumerate() {
+                match item {
+                    crate::models::itinerary::base::DayItem::Activity { activity_id, time } => {
+                        activity_ids.push(*activity_id);
+                        println!("      🎯 Item {}: Activity ID {} at {}", i+1, activity_id, time);
+                    }
+                    crate::models::itinerary::base::DayItem::Transportation { time, name, .. } => {
+                        println!("      🚗 Item {}: Transportation '{}' at {}", i+1, name, time);
+                    }
+                    crate::models::itinerary::base::DayItem::Accommodation { time, accommodation_id } => {
+                        println!("      🏨 Item {}: Accommodation {} at {}", i+1, accommodation_id, time);
+                    }
+                }
+            }
+        }
+        
+        println!("Total activity IDs found: {}", activity_ids.len());
+        
+        // Fetch all activities in one query
+        let mut activities_map = HashMap::new();
+        if !activity_ids.is_empty() {
+            println!("   🔍 Looking up {} activity IDs in database", activity_ids.len());
+            let filter = doc! { "_id": { "$in": &activity_ids } };
+            if let Ok(mut cursor) = activities_collection.find(filter).await {
+                let mut found_count = 0;
+                while let Ok(Some(activity)) = cursor.try_next().await {
+                    if let Some(id) = activity.id {
+                        activities_map.insert(id, activity.clone());
+                        found_count += 1;
+                        println!("      ✅ Found activity: {} ({})", activity.title, id);
+                    }
+                }
+                println!("   📊 Found {}/{} activities in database", found_count, activity_ids.len());
+            } else {
+                println!("   ❌ Failed to execute activity lookup query");
+            }
+        } else {
+            println!("   ⚠️  No activity IDs to look up");
+        }
+        
+        // Transform days with populated activities
+        for (day_num, day_items) in &itinerary.days.days {
+            let mut populated_items = Vec::new();
+            
+            for item in day_items {
+                match item {
+                    crate::models::itinerary::base::DayItem::Activity { time, activity_id } => {
+                        if let Some(activity) = activities_map.get(activity_id) {
+                            // Create populated activity item
+                            let populated_item = PopulatedDayItem::from_activity(
+                                time.clone(),
+                                *activity_id,
+                                activity.clone(),
+                            );
+                            populated_items.push(populated_item);
+                            
+                            // Add to activity summaries
+                            activity_summaries.push(ActivitySummary {
+                                time: time.clone(),
+                                label: activity.title.clone(),
+                                tags: activity.tags.clone(),
+                            });
+                        }
+                    }
+                    crate::models::itinerary::base::DayItem::Transportation { time, location, name } => {
+                        populated_items.push(PopulatedDayItem::Transportation {
+                            time: time.clone(),
+                            location: serde_json::json!({
+                                "name": location.name,
+                                "coordinates": location.coordinates,
+                            }),
+                            name: name.clone(),
+                        });
+                    }
+                    crate::models::itinerary::base::DayItem::Accommodation { time, accommodation_id } => {
+                        populated_items.push(PopulatedDayItem::Accommodation {
+                            time: time.clone(),
+                            accommodation_id: *accommodation_id,
+                        });
+                    }
+                }
+            }
+            
+            populated_days.insert(day_num.clone(), populated_items);
+        }
+        
+        // Create response item
+        let response_item = SearchResponseItem {
+            id: itinerary.id.unwrap_or_else(|| ObjectId::new()),
+            fareharbor_id: itinerary.fareharbor_id,
+            trip_name: itinerary.trip_name,
+            min_age: itinerary.min_age,
+            min_group: itinerary.min_group,
+            max_group: itinerary.max_group,
+            length_days: itinerary.length_days,
+            length_hours: itinerary.length_hours,
+            start_location: itinerary.start_location,
+            end_location: itinerary.end_location,
+            description: itinerary.description,
+            images: itinerary.images.unwrap_or_default(),
+            created_at: itinerary.created_at,
+            updated_at: itinerary.updated_at,
+            person_cost: itinerary.person_cost.unwrap_or(0.0),
+            days: populated_days,
+            activities: activity_summaries,
+            match_score: itinerary.match_score,
+            score_breakdown: itinerary.score_breakdown.map(|s| serde_json::to_value(s).unwrap_or(serde_json::Value::Null)),
+        };
+        
+        response_items.push(response_item);
+    }
+    
+    response_items
 }

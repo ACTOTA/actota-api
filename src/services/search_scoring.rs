@@ -685,8 +685,8 @@ impl AsyncSearchScorer {
     async fn fetch_activities(&self, activity_ids: Vec<ObjectId>) -> Result<Vec<Activity>, mongodb::error::Error> {
         let collection: mongodb::Collection<Activity> = self
             .client
-            .database("Itineraries")
-            .collection("Activities");
+            .database("Options")
+            .collection("Activity");
 
         let filter = mongodb::bson::doc! {
             "_id": { "$in": activity_ids }

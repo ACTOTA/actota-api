@@ -5,7 +5,7 @@ use crate::services::search_scoring::AsyncSearchScorer;
 use bson::{doc, Document};
 use futures::TryStreamExt;
 use mongodb::{Client, Collection};
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 
 pub async fn search_itineraries(
     client: Arc<Client>,
@@ -282,36 +282,72 @@ pub async fn search_or_generate_itineraries(
 
     // Create itinerary generator
     let generator = ItineraryGenerator::new(client.clone());
+    let collection: Collection<FeaturedVacation> =
+        client.database("Itineraries").collection("Featured");
 
-    // Try to generate a new itinerary
-    match generator.generate_itinerary(&search_params).await {
-        Ok(generated_itinerary) => {
-            println!(
-                "Successfully generated new itinerary: {}",
-                generated_itinerary.trip_name
-            );
-
-            // Save the generated itinerary to the database
-            let collection: Collection<FeaturedVacation> =
-                client.database("Itineraries").collection("Featured");
-            match collection.insert_one(&generated_itinerary).await {
-                Ok(insert_result) => {
+    // Generate enough itineraries to meet the threshold with variety
+    let needed_count = min_results_threshold.saturating_sub(results.len());
+    println!("Need to generate {} more itineraries", needed_count);
+    
+    let mut generated_names = std::collections::HashSet::new();
+    let mut generation_attempts = 0;
+    let max_attempts = needed_count * 3; // Allow multiple attempts to ensure variety
+    
+    for i in 1..=needed_count {
+        let mut attempt = 0;
+        let max_retries = 5;
+        
+        while attempt < max_retries && generation_attempts < max_attempts {
+            generation_attempts += 1;
+            
+            match generator.generate_unique_itinerary(&search_params, i, &generated_names).await {
+                Ok(generated_itinerary) => {
+                    // Check if this name is already used
+                    if generated_names.contains(&generated_itinerary.trip_name) {
+                        println!("Generated duplicate name '{}', retrying...", generated_itinerary.trip_name);
+                        attempt += 1;
+                        continue;
+                    }
+                    
+                    // Check if this itinerary is too similar to existing ones
+                    if is_too_similar_to_existing(&generated_itinerary, &results) {
+                        println!("Generated itinerary '{}' is too similar to existing ones, retrying...", generated_itinerary.trip_name);
+                        attempt += 1;
+                        continue;
+                    }
+                    
                     println!(
-                        "Saved generated itinerary to database with ID: {:?}",
-                        insert_result.inserted_id
+                        "Successfully generated unique itinerary {}/{}: {}",
+                        i, needed_count, generated_itinerary.trip_name
                     );
+
+                    // Save the generated itinerary to the database
+                    match collection.insert_one(&generated_itinerary).await {
+                        Ok(insert_result) => {
+                            println!(
+                                "Saved generated itinerary {} to database with ID: {:?}",
+                                i, insert_result.inserted_id
+                            );
+                        }
+                        Err(e) => {
+                            eprintln!("Failed to save generated itinerary to database: {}", e);
+                            // Continue anyway - the itinerary is still useful for this request
+                        }
+                    }
+
+                    generated_names.insert(generated_itinerary.trip_name.clone());
+                    results.push(generated_itinerary);
+                    break; // Successfully generated unique itinerary
                 }
                 Err(e) => {
-                    eprintln!("Failed to save generated itinerary to database: {}", e);
-                    // Continue anyway - the itinerary is still useful for this request
+                    eprintln!("Failed to generate itinerary {} (attempt {}): {}", i, attempt + 1, e);
+                    attempt += 1;
                 }
             }
-
-            results.push(generated_itinerary);
         }
-        Err(e) => {
-            eprintln!("Failed to generate itinerary: {}", e);
-            // Return existing results even if generation failed
+        
+        if attempt >= max_retries {
+            println!("Failed to generate unique itinerary {} after {} attempts", i, max_retries);
         }
     }
 
@@ -767,4 +803,37 @@ async fn find_and_generate_itineraries(
     }
     
     Ok(generated_itineraries)
+}
+
+/// Check if a generated itinerary is too similar to existing ones
+fn is_too_similar_to_existing(new_itinerary: &FeaturedVacation, existing_itineraries: &[FeaturedVacation]) -> bool {
+    for existing in existing_itineraries {
+        // Check for identical trip names
+        if new_itinerary.trip_name == existing.trip_name {
+            return true;
+        }
+        
+        // Check for very similar characteristics
+        let same_location = new_itinerary.start_location.city() == existing.start_location.city();
+        let same_duration = new_itinerary.length_days == existing.length_days;
+        let same_group_size = new_itinerary.min_group == existing.min_group && new_itinerary.max_group == existing.max_group;
+        
+        // Count similar activities
+        let new_activity_count = new_itinerary.days.days.values().map(|day| {
+            day.iter().filter(|item| matches!(item, crate::models::itinerary::base::DayItem::Activity { .. })).count()
+        }).sum::<usize>();
+        
+        let existing_activity_count = existing.days.days.values().map(|day| {
+            day.iter().filter(|item| matches!(item, crate::models::itinerary::base::DayItem::Activity { .. })).count()
+        }).sum::<usize>();
+        
+        let similar_activity_count = new_activity_count.abs_diff(existing_activity_count) <= 1;
+        
+        // If too many characteristics are the same, consider it too similar
+        if same_location && same_duration && same_group_size && similar_activity_count {
+            return true;
+        }
+    }
+    
+    false
 }

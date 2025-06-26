@@ -1,0 +1,71 @@
+{
+  "_id": {"$oid": "685c87a85fa46caf59eaebae"},
+  "fareharbor_id": null,
+  "trip_name": "Denver Adventure", 
+  "min_age": null,
+  "min_group": 2,
+  "max_group": 2,
+  "length_days": 2,
+  "length_hours": 48,
+  "start_location": {
+    "city": "Denver",
+    "state": "Colorado", 
+    "coordinates": [-104.9903, 39.7392]
+  },
+  "end_location": {
+    "city": "Denver",
+    "state": "Colorado",
+    "coordinates": [-104.9903, 39.7392] 
+  },
+  "description": "Discover Denver with exciting activities and experiences.",
+  "images": [],
+  "created_at": {"$date": {"$numberLong": "1750894504787"}},
+  "updated_at": {"$date": {"$numberLong": "1750894504787"}},
+  "person_cost": 157,
+  "days": {
+    "1": [
+      {
+        "type": "activity",
+        "time": "10:00:00",
+        "activity_id": {"$oid": "680fba303217b9ad0f3c1352"},
+        "_id": {"$oid": "680fba303217b9ad0f3c1352"},
+        "company": "Garden of the Gods Visitor & Nature Center",
+        "company_id": "fe56b550-fb2f-4a4e-bc66-9ea02b6631a4",
+        "booking_link": "https://gardenofgods.com/activities/hiking-trails/",
+        "online_booking_status": "available",
+        "title": "Hiking Adventure at Garden of the Gods",
+        "description": "Explore the awe-inspiring red rock formations...",
+        "activity_types": ["hiking"],
+        "tags": ["nature connection", "geology", "wildlife education", "conservation", "photography"],
+        "price_per_person": 0,
+        "duration_minutes": 60,
+        "daily_time_slots": [
+          {"start": "07:30:00", "end": "08:30:00"}
+        ],
+        "address": {
+          "street": "1805 N 30th Street",
+          "unit": "",
+          "city": "Colorado Springs", 
+          "state": "CO",
+          "zip": "80904",
+          "country": "USA"
+        },
+        "whats_included": ["Trail maps", "Interpretive signage along the trails"],
+        "weight_limit_lbs": null,
+        "age_requirement": null,
+        "height_requirement": null,
+        "capacity": {"minimum": 1, "maximum": 100},
+        "activities": null,
+        "primary_image": "https://storage.googleapis.com/actota-activity-media/680fba303217b9ad0f3c1352/103ef768-ae50-488d-959b-0b1d6a2c9e61.png",
+        "images": ["https://storage.googleapis.com/actota-activity-media/680fba303217b9ad0f3c1352/103ef768-ae50-488d-959b-0b1d6a2c9e61.png"]
+      }
+    ]
+  },
+  "activities": [
+    {
+      "time": "10:00:00",
+      "label": "Hiking Adventure at Garden of the Gods",
+      "tags": ["nature connection", "geology", "wildlife education", "conservation", "photography"]
+    }
+  ]
+}

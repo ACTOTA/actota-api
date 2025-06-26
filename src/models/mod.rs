@@ -6,5 +6,6 @@ pub mod interests;
 pub mod itinerary;
 pub mod location;
 pub mod search;
+pub mod search_response;
 pub mod user;
 pub mod bookings;

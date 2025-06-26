@@ -4,7 +4,7 @@ use crate::models::{
     search::{SearchItinerary, TripPace},
 };
 use crate::services::vertex_search_service::VertexSearchService;
-use chrono::{Datelike, Duration, NaiveDate, NaiveDateTime, NaiveTime};
+use chrono::{Datelike, Duration, NaiveDate, NaiveDateTime, NaiveTime, Utc};
 use mongodb::{bson::oid::ObjectId, Client, Collection};
 use std::{collections::HashMap, sync::Arc};
 
@@ -44,7 +44,14 @@ impl ItineraryGenerator {
         let activities = self.fetch_activities(search_params).await?;
         let locations = self.get_locations(search_params);
 
+        println!("🔍 Found {} activities total for itinerary generation", activities.len());
+        for (i, activity) in activities.iter().enumerate() {
+            println!("   Activity {}: ID={:?}, Title={}, Duration={}min", 
+                i+1, activity.id, activity.title, activity.duration_minutes);
+        }
+
         if activities.is_empty() {
+            println!("❌ No activities found - cannot generate itinerary");
             return Err("No matching activities found".into());
         }
 
@@ -65,6 +72,10 @@ impl ItineraryGenerator {
         // Generate daily schedules based on trip pace
         let trip_pace = search_params.trip_pace.as_ref().unwrap_or(&TripPace::Moderate);
         let days = self.generate_daily_schedules_with_pace(&activities, trip_duration_days, trip_pace)?;
+        
+        println!("🔄 Generated {} days with total items: {}", 
+            days.len(), 
+            days.values().map(|v| v.len()).sum::<usize>());
 
         // Calculate cost
         let person_cost = self.calculate_cost(&days, &activities);
@@ -123,6 +134,243 @@ impl ItineraryGenerator {
         Ok(generated_itinerary)
     }
 
+    /// Generate a unique itinerary with variety to avoid duplicates
+    pub async fn generate_unique_itinerary(
+        &self,
+        search_params: &SearchItinerary,
+        variation_index: usize,
+        existing_names: &std::collections::HashSet<String>,
+    ) -> Result<FeaturedVacation, Box<dyn std::error::Error>> {
+        // Get activities and locations
+        let activities = self.fetch_activities(search_params).await?;
+        let locations = self.get_locations(search_params);
+
+        if activities.is_empty() {
+            return Err("No matching activities found".into());
+        }
+
+        // Calculate trip duration
+        let arrival_str = search_params
+            .arrival_datetime
+            .as_ref()
+            .ok_or("Arrival datetime required")?;
+        let departure_str = search_params
+            .departure_datetime
+            .as_ref()
+            .ok_or("Departure datetime required")?;
+
+        let arrival_date = self.parse_datetime(arrival_str)?;
+        let departure_date = self.parse_datetime(departure_str)?;
+
+        let trip_duration_days = (departure_date - arrival_date).num_days() as u32;
+
+        // Create unique trip name based on variation
+        let trip_name = self.generate_unique_trip_name(&locations.0, search_params, variation_index, existing_names);
+
+        // Generate varied daily schedules
+        let days = self.generate_varied_daily_schedules_with_pace(
+            &activities,
+            trip_duration_days,
+            search_params.trip_pace.as_ref(),
+            variation_index,
+        )?;
+
+        // Calculate cost with some variation
+        let base_cost = self.calculate_cost(&days, &activities);
+        let cost_variation = (variation_index % 3) as f32 * 10.0; // Small cost variations
+        let person_cost = base_cost + cost_variation;
+
+        // Create description with variation
+        let description = self.generate_varied_description(&locations.0, search_params, variation_index);
+
+        let generated_itinerary = FeaturedVacation {
+            id: None,
+            fareharbor_id: None,
+            trip_name,
+            min_age: None,
+            min_group: search_params.adults.unwrap_or(1),
+            max_group: search_params.adults.unwrap_or(1) + search_params.children.unwrap_or(0),
+            length_days: trip_duration_days,
+            length_hours: trip_duration_days * 24,
+            start_location: locations.0.clone(),
+            end_location: locations.1.clone(),
+            description,
+            days: crate::models::itinerary::base::Days { days },
+            images: None,
+            arrival_datetime: Some(mongodb::bson::DateTime::from_millis(
+                arrival_date.and_utc().timestamp_millis(),
+            )),
+            departure_datetime: Some(mongodb::bson::DateTime::from_millis(
+                departure_date.and_utc().timestamp_millis(),
+            )),
+            adults: search_params.adults,
+            children: search_params.children,
+            infants: search_params.infants,
+            pets: Some(0),
+            lodging: search_params.lodging.clone(),
+            transportation: search_params.transportation.clone(),
+            person_cost: Some(person_cost as f64),
+            created_at: Some(mongodb::bson::DateTime::now()),
+            updated_at: Some(mongodb::bson::DateTime::now()),
+            tag: Some("generated".to_string()),
+            activities: Some(
+                activities
+                    .iter()
+                    .map(|activity| crate::models::itinerary::base::Activity {
+                        label: activity.title.clone(),
+                        description: activity.description.clone(),
+                        tags: activity.tags.clone(),
+                    })
+                    .collect(),
+            ),
+            match_score: None,
+            score_breakdown: None,
+        };
+
+        Ok(generated_itinerary)
+    }
+
+    /// Generate unique trip names with different themes
+    fn generate_unique_trip_name(
+        &self,
+        location: &crate::models::itinerary::base::Location,
+        search_params: &SearchItinerary,
+        variation_index: usize,
+        existing_names: &std::collections::HashSet<String>,
+    ) -> String {
+        let city = location.city();
+        let default_activities = vec![];
+        let activities = search_params.activities.as_ref().unwrap_or(&default_activities);
+        let default_activity = "adventure".to_string();
+        let primary_activity = activities.first().unwrap_or(&default_activity);
+        
+        // Different name templates based on variation
+        let activity_title = Self::to_title_case(primary_activity);
+        let name_templates = vec![
+            format!("{} {} Adventure", city, activity_title),
+            format!("Discover {} - {} Experience", city, activity_title),
+            format!("{} {} Getaway", city, activity_title),
+            format!("Ultimate {} {} Tour", city, activity_title),
+            format!("{} Explorer - {}", city, activity_title),
+            format!("{} {} Expedition", city, activity_title),
+            format!("Wild {} - {} Journey", city, activity_title),
+            format!("{} {} Quest", city, activity_title),
+        ];
+        
+        // Try different templates until we find a unique name
+        for (i, template) in name_templates.iter().enumerate() {
+            let candidate_name = if i == variation_index % name_templates.len() {
+                template.clone()
+            } else {
+                continue;
+            };
+            
+            if !existing_names.contains(&candidate_name) {
+                return candidate_name;
+            }
+        }
+        
+        // Fallback with timestamp if all templates are used
+        format!("{} Adventure {}", city, Utc::now().timestamp() % 10000)
+    }
+
+    /// Generate varied descriptions
+    fn generate_varied_description(
+        &self,
+        location: &crate::models::itinerary::base::Location,
+        search_params: &SearchItinerary,
+        variation_index: usize,
+    ) -> String {
+        let city = location.city();
+        let default_activities = vec![];
+        let activities = search_params.activities.as_ref().unwrap_or(&default_activities);
+        let default_activity = "adventure".to_string();
+        let primary_activity = activities.first().unwrap_or(&default_activity);
+        
+        let descriptions = vec![
+            format!("Discover {} with exciting {} activities and unforgettable experiences.", city, primary_activity),
+            format!("Explore the best of {} through thrilling {} adventures and local attractions.", city, primary_activity),
+            format!("Immerse yourself in {}'s culture while enjoying amazing {} activities.", city, primary_activity),
+            format!("Experience {} like never before with our curated {} itinerary.", city, primary_activity),
+            format!("Journey through {} with perfectly planned {} experiences and hidden gems.", city, primary_activity),
+        ];
+        
+        descriptions[variation_index % descriptions.len()].clone()
+    }
+
+    /// Generate varied daily schedules to create different itineraries
+    fn generate_varied_daily_schedules_with_pace(
+        &self,
+        activities: &[Activity],
+        trip_duration_days: u32,
+        trip_pace: Option<&TripPace>,
+        variation_index: usize,
+    ) -> Result<HashMap<String, Vec<DayItem>>, Box<dyn std::error::Error>> {
+        let pace = trip_pace.unwrap_or(&TripPace::Moderate);
+        let max_hours_per_day = pace.max_activity_hours_per_day();
+        let activities_per_day = pace.typical_activities_per_day();
+
+        let mut daily_schedules = HashMap::new();
+
+        for day in 1..=trip_duration_days {
+            let mut day_schedule = Vec::new();
+            let mut day_hours = 0.0;
+            let mut activities_added = 0;
+
+            // Start times vary by variation to create different schedules
+            let base_start_hour = match variation_index % 3 {
+                0 => 9,  // Early start
+                1 => 10, // Regular start  
+                2 => 11, // Late start
+                _ => 9,
+            };
+
+            let mut current_hour = base_start_hour;
+
+            // Vary activity selection pattern
+            let activity_start_index = (variation_index * 2 + (day - 1) as usize) % activities.len();
+            
+            while activities_added < activities_per_day && day_hours < max_hours_per_day {
+                let activity_index = (activity_start_index + activities_added) % activities.len();
+                let activity = &activities[activity_index];
+
+                let activity_duration_hours = activity.duration_minutes as f32 / 60.0;
+                
+                if day_hours + activity_duration_hours <= max_hours_per_day {
+                    let time = format!("{:02}:00:00", current_hour);
+                    
+                    if let Some(activity_id) = activity.id {
+                        day_schedule.push(DayItem::Activity {
+                            activity_id,
+                            time,
+                        });
+                        
+                        day_hours += activity_duration_hours;
+                        activities_added += 1;
+                        current_hour += activity_duration_hours.ceil() as u32;
+                        
+                        // Add buffer time between activities (varies by variation)
+                        let buffer_hours = match variation_index % 3 {
+                            0 => 1, // Tight schedule
+                            1 => 2, // Normal schedule
+                            2 => 3, // Relaxed schedule
+                            _ => 2,
+                        };
+                        current_hour += buffer_hours;
+                    }
+                } else {
+                    break;
+                }
+            }
+
+            if !day_schedule.is_empty() {
+                daily_schedules.insert(day.to_string(), day_schedule);
+            }
+        }
+
+        Ok(daily_schedules)
+    }
+
     /// Fetch activities using Vertex AI first, MongoDB as fallback
     async fn fetch_activities(
         &self,
@@ -152,7 +400,7 @@ impl ItineraryGenerator {
                     println!("Vertex AI returned {} activity results", vertex_response.results.len());
                     let mut vertex_activities = Vec::new();
                     let _collection: Collection<Activity> =
-                        self.client.database("Itineraries").collection("Activities");
+                        self.client.database("Options").collection("Activity");
 
                     for result in vertex_response.results.iter() {
                             // Transform Vertex AI document to match Activity struct format
@@ -279,7 +527,7 @@ impl ItineraryGenerator {
         search_params: &SearchItinerary,
     ) -> Result<Vec<Activity>, mongodb::error::Error> {
         let collection: Collection<Activity> =
-            self.client.database("Itineraries").collection("Activities");
+            self.client.database("Options").collection("Activity");
         let mut filter = mongodb::bson::doc! {};
 
         // Add activity filter if provided
@@ -400,10 +648,14 @@ impl ItineraryGenerator {
             let mut idx = start_idx;
             
             // Add activities until we reach the pace limit or run out of hours
-            while activities_added < activities_per_day && day_hours < max_hours_per_day && idx < activities.len() {
+            // Note: Remove the idx < activities.len() condition to allow cycling through activities
+            while activities_added < activities_per_day && day_hours < max_hours_per_day {
                 let activity = &activities[idx % activities.len()];
                 let activity_id = activity.id.unwrap_or_else(|| ObjectId::new());
                 let activity_duration_hours = activity.duration_minutes as f32 / 60.0;
+                
+                println!("   📍 Day {}: Adding activity '{}' (ID: {:?}) at {}", 
+                    day_num, activity.title, activity_id, current_time.format("%H:%M:%S"));
                 
                 // Check if adding this activity would exceed daily hour limit
                 if day_hours + activity_duration_hours <= max_hours_per_day {
@@ -423,10 +675,22 @@ impl ItineraryGenerator {
                     };
                     
                     current_time = current_time + Duration::minutes(activity.duration_minutes as i64) + break_time;
+                } else {
+                    println!("   ⚠️  Day {}: Skipping activity '{}' - would exceed daily hour limit ({} + {} > {})", 
+                        day_num, activity.title, day_hours, activity_duration_hours, max_hours_per_day);
                 }
                 
                 idx += 1;
+                
+                // Safety check to prevent infinite loops in case all activities are too long
+                if idx - start_idx >= activities.len() * 2 {
+                    println!("   ⚠️  Day {}: Checked all activities twice, stopping to prevent infinite loop", day_num);
+                    break;
+                }
             }
+            
+            println!("   ✅ Day {}: Added {} activities, total hours: {:.1}", 
+                day_num, activities_added, day_hours);
 
             days.insert(day_key, day_items);
         }
@@ -632,6 +896,24 @@ impl ItineraryGenerator {
         };
 
         Ok(activity)
+    }
+
+    /// Simple title case conversion
+    fn to_title_case(s: &str) -> String {
+        s.split_whitespace()
+            .map(|word| {
+                if word.is_empty() {
+                    String::new()
+                } else {
+                    let mut chars = word.chars();
+                    match chars.next() {
+                        None => String::new(),
+                        Some(first) => first.to_uppercase().collect::<String>() + &chars.as_str().to_lowercase(),
+                    }
+                }
+            })
+            .collect::<Vec<String>>()
+            .join(" ")
     }
 }
 
