@@ -3,8 +3,8 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct TimeSlot {
-    start: String,
-    end: String,
+    pub start: String,
+    pub end: String,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]

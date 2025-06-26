@@ -3,7 +3,7 @@ use crate::models::itinerary::populated::PopulatedFeaturedVacation;
 use crate::models::{itinerary::base::FeaturedVacation, search::SearchItinerary};
 use crate::services::itinerary_search_service::search_or_generate_itineraries;
 use crate::services::itinerary_service::get_images;
-use crate::services::search_scoring::{AsyncSearchScorer, SearchScorer};
+use crate::services::search_scoring::AsyncSearchScorer;
 use actix_web::{web, HttpResponse, Responder};
 use bson::{doc, DateTime};
 use futures::TryStreamExt;
@@ -332,7 +332,8 @@ pub async fn search_itineraries_endpoint(
                 + scorer.weights.activity_weight
                 + scorer.weights.group_size_weight
                 + scorer.weights.lodging_weight
-                + scorer.weights.transportation_weight;
+                + scorer.weights.transportation_weight
+                + scorer.weights.trip_pace_weight;
 
             // Populate all itineraries concurrently with scores
             let populate_futures: Vec<_> = processed_itineraries
@@ -380,6 +381,10 @@ pub async fn search_itineraries_endpoint(
                                     
                                     normalized_breakdown.transportation_score = if scorer.weights.transportation_weight > 0.0 {
                                         ((normalized_breakdown.transportation_score / scorer.weights.transportation_weight) * 100.0).min(100.0).max(0.0)
+                                    } else { 0.0 };
+                                    
+                                    normalized_breakdown.trip_pace_score = if scorer.weights.trip_pace_weight > 0.0 {
+                                        ((normalized_breakdown.trip_pace_score / scorer.weights.trip_pace_weight) * 100.0).min(100.0).max(0.0)
                                     } else { 0.0 };
 
                                     populated.set_score_breakdown(normalized_breakdown);
@@ -490,7 +495,8 @@ pub async fn search_or_generate(
                 + scorer.weights.activity_weight
                 + scorer.weights.group_size_weight
                 + scorer.weights.lodging_weight
-                + scorer.weights.transportation_weight;
+                + scorer.weights.transportation_weight
+                + scorer.weights.trip_pace_weight;
 
             // Populate all itineraries concurrently with scores
             let populate_futures: Vec<_> = processed_itineraries
@@ -538,6 +544,10 @@ pub async fn search_or_generate(
                                     
                                     normalized_breakdown.transportation_score = if scorer.weights.transportation_weight > 0.0 {
                                         ((normalized_breakdown.transportation_score / scorer.weights.transportation_weight) * 100.0).min(100.0).max(0.0)
+                                    } else { 0.0 };
+                                    
+                                    normalized_breakdown.trip_pace_score = if scorer.weights.trip_pace_weight > 0.0 {
+                                        ((normalized_breakdown.trip_pace_score / scorer.weights.trip_pace_weight) * 100.0).min(100.0).max(0.0)
                                     } else { 0.0 };
 
                                     populated.set_score_breakdown(normalized_breakdown);

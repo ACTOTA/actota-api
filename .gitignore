@@ -1,6 +1,7 @@
 /target
 Cargo.lock
 .env
+.env.local
 credentials/
 
 .DS_Store

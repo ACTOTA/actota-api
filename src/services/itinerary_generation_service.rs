@@ -1,7 +1,7 @@
 use crate::models::{
     activity::Activity,
     itinerary::base::{DayItem, FeaturedVacation},
-    search::SearchItinerary,
+    search::{SearchItinerary, TripPace},
 };
 use crate::services::vertex_search_service::VertexSearchService;
 use chrono::{Datelike, Duration, NaiveDate, NaiveDateTime, NaiveTime};
@@ -62,8 +62,9 @@ impl ItineraryGenerator {
         let departure_date = self.parse_datetime(departure_str)?;
         let trip_duration_days = (departure_date - arrival_date).num_days() as u32;
 
-        // Generate daily schedules
-        let days = self.generate_daily_schedules(&activities, trip_duration_days)?;
+        // Generate daily schedules based on trip pace
+        let trip_pace = search_params.trip_pace.as_ref().unwrap_or(&TripPace::Moderate);
+        let days = self.generate_daily_schedules_with_pace(&activities, trip_duration_days, trip_pace)?;
 
         // Calculate cost
         let person_cost = self.calculate_cost(&days, &activities);
@@ -359,11 +360,12 @@ impl ItineraryGenerator {
         }
     }
 
-    /// Generate simple daily schedules
-    fn generate_daily_schedules(
+    /// Generate daily schedules based on trip pace
+    fn generate_daily_schedules_with_pace(
         &self,
         activities: &[Activity],
         trip_duration_days: u32,
+        trip_pace: &TripPace,
     ) -> Result<HashMap<String, Vec<DayItem>>, Box<dyn std::error::Error>> {
         println!("📅 Generating schedules for {} activities:", activities.len());
         for (i, activity) in activities.iter().enumerate() {
@@ -371,28 +373,59 @@ impl ItineraryGenerator {
         }
         
         let mut days = HashMap::new();
-        let activities_per_day = std::cmp::min(3, activities.len());
+        
+        // Determine activities per day based on trip pace
+        let activities_per_day = trip_pace.typical_activities_per_day();
+        let max_hours_per_day = trip_pace.max_activity_hours_per_day();
+        
+        println!("Trip pace: {:?}, activities per day: {}, max hours: {}", 
+            trip_pace, activities_per_day, max_hours_per_day);
 
         for day_num in 1..=trip_duration_days {
             let day_key = day_num.to_string();
             let mut day_items = Vec::new();
+            let mut day_hours = 0.0;
 
             // Add activities for this day
             let start_idx = ((day_num - 1) as usize * activities_per_day) % activities.len();
-            let end_idx = std::cmp::min(start_idx + activities_per_day, activities.len());
+            
+            // Start time based on trip pace
+            let mut current_time = match trip_pace {
+                TripPace::Relaxed => NaiveTime::from_hms_opt(10, 0, 0).unwrap(),   // Later start
+                TripPace::Moderate => NaiveTime::from_hms_opt(9, 0, 0).unwrap(),   // Moderate start
+                TripPace::Adventure => NaiveTime::from_hms_opt(8, 0, 0).unwrap(),  // Early start
+            };
 
-            let mut current_time = NaiveTime::from_hms_opt(10, 0, 0).unwrap();
-
-            for activity in activities[start_idx..end_idx].iter() {
+            let mut activities_added = 0;
+            let mut idx = start_idx;
+            
+            // Add activities until we reach the pace limit or run out of hours
+            while activities_added < activities_per_day && day_hours < max_hours_per_day && idx < activities.len() {
+                let activity = &activities[idx % activities.len()];
                 let activity_id = activity.id.unwrap_or_else(|| ObjectId::new());
-
-                day_items.push(DayItem::Activity {
-                    time: current_time.format("%H:%M:%S").to_string(),
-                    activity_id,
-                });
-
-                // Add 2 hours between activities
-                current_time = current_time + Duration::hours(2);
+                let activity_duration_hours = activity.duration_minutes as f32 / 60.0;
+                
+                // Check if adding this activity would exceed daily hour limit
+                if day_hours + activity_duration_hours <= max_hours_per_day {
+                    day_items.push(DayItem::Activity {
+                        time: current_time.format("%H:%M:%S").to_string(),
+                        activity_id,
+                    });
+                    
+                    day_hours += activity_duration_hours;
+                    activities_added += 1;
+                    
+                    // Add break time between activities based on pace
+                    let break_time = match trip_pace {
+                        TripPace::Relaxed => Duration::minutes(90),   // Longer breaks
+                        TripPace::Moderate => Duration::minutes(60),  // Moderate breaks
+                        TripPace::Adventure => Duration::minutes(30), // Short breaks
+                    };
+                    
+                    current_time = current_time + Duration::minutes(activity.duration_minutes as i64) + break_time;
+                }
+                
+                idx += 1;
             }
 
             days.insert(day_key, day_items);

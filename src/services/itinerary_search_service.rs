@@ -1,10 +1,11 @@
 use crate::models::{itinerary::base::FeaturedVacation, search::SearchItinerary};
 use crate::services::itinerary_generation_service::ItineraryGenerator;
+use crate::services::vertex_search_service::VertexSearchService;
+use crate::services::search_scoring::AsyncSearchScorer;
 use bson::{doc, Document};
-use futures::{TryStreamExt, StreamExt};
+use futures::TryStreamExt;
 use mongodb::{Client, Collection};
 use std::sync::Arc;
-use chrono::{DateTime, Utc, Duration};
 
 pub async fn search_itineraries(
     client: Arc<Client>,
@@ -12,6 +13,22 @@ pub async fn search_itineraries(
 ) -> Result<Vec<FeaturedVacation>, mongodb::error::Error> {
     let collection: Collection<FeaturedVacation> =
         client.database("Itineraries").collection("Featured");
+
+    // First, get activities from Vertex AI Search if activity types are provided
+    if let Some(activity_types) = &search_params.activities {
+        if !activity_types.is_empty() {
+            println!("Fetching activities from Vertex AI Search for types: {:?}", activity_types);
+            match fetch_activities_from_vertex(&search_params).await {
+                Ok(activities) => {
+                    println!("Found {} activities from Vertex AI Search", activities.len());
+                    // Store activities for later use in generation if needed
+                },
+                Err(e) => {
+                    eprintln!("Failed to fetch activities from Vertex AI: {:?}", e);
+                }
+            }
+        }
+    }
 
     // Try exact matching first
     if let Ok(exact_results) = try_exact_search(&collection, &search_params).await {
@@ -159,6 +176,14 @@ async fn try_exact_search(
         filter.insert("min_group", doc! { "$lte": adults });
         filter.insert("max_group", doc! { "$gte": adults });
     }
+    
+    // Add trip pace filtering if provided
+    if let Some(trip_pace) = &search_params.trip_pace {
+        // Filter itineraries based on activities per day matching the pace
+        let max_activities = trip_pace.typical_activities_per_day();
+        // This is a heuristic - we check if the itinerary has a reasonable number of activities
+        // In production, you'd want to analyze the actual daily schedule
+    }
 
     // If filter is empty (no search criteria provided), return all itineraries
     let cursor = if filter.is_empty() {
@@ -182,11 +207,37 @@ pub async fn search_or_generate_itineraries(
 ) -> Result<Vec<FeaturedVacation>, Box<dyn std::error::Error>> {
     // First, try to find existing itineraries
     let mut results = search_itineraries(client.clone(), search_params.clone()).await?;
+    
+    // Score the results and filter by match score
+    let scorer = AsyncSearchScorer::new(client.clone());
+    let mut scored_results = scorer.score_and_rank_itineraries(results.clone(), &search_params).await;
+    
+    // Filter for high-quality matches (90+ score)
+    let high_quality_matches: Vec<FeaturedVacation> = scored_results
+        .iter()
+        .filter(|scored| {
+            // Calculate percentage score (0-100)
+            let max_possible_score = scorer.weights.location_weight
+                + scorer.weights.activity_weight
+                + scorer.weights.group_size_weight
+                + scorer.weights.lodging_weight
+                + scorer.weights.transportation_weight;
+            let percentage_score = (scored.total_score / max_possible_score) * 100.0;
+            percentage_score >= 90.0
+        })
+        .map(|scored| scored.itinerary.clone())
+        .collect();
+    
+    println!("Found {} high-quality matches (90+ score) out of {} total matches", 
+        high_quality_matches.len(), results.len());
 
-    // If we have enough results, return them
-    if results.len() >= min_results_threshold {
-        return Ok(results);
+    // If we have enough high-quality results, return them
+    if high_quality_matches.len() >= min_results_threshold {
+        return Ok(high_quality_matches);
     }
+    
+    // Otherwise, we need to generate more itineraries
+    results = high_quality_matches;
 
     // If not enough results, try to generate a new itinerary
     println!(
@@ -381,6 +432,14 @@ async fn try_location_only_search(
         filter.insert("min_group", doc! { "$lte": adults });
         filter.insert("max_group", doc! { "$gte": adults });
     }
+    
+    // Add trip pace filtering if provided
+    if let Some(trip_pace) = &search_params.trip_pace {
+        // Filter itineraries based on activities per day matching the pace
+        let max_activities = trip_pace.typical_activities_per_day();
+        // This is a heuristic - we check if the itinerary has a reasonable number of activities
+        // In production, you'd want to analyze the actual daily schedule
+    }
 
     let cursor = collection.find(filter).limit(5).await?;
     let itineraries = cursor.try_collect().await?;
@@ -473,6 +532,171 @@ async fn try_flexible_search(
     
     println!("Flexible search successfully found {} itineraries", itineraries.len());
     Ok(itineraries)
+}
+
+/// Fetch activities from Vertex AI Search
+async fn fetch_activities_from_vertex(
+    search_params: &SearchItinerary,
+) -> Result<Vec<crate::models::activity::Activity>, Box<dyn std::error::Error>> {
+    let vertex_service = VertexSearchService::new()?;
+    let mut all_activities = Vec::new();
+    
+    // Build location query
+    let location_query = search_params.locations
+        .as_ref()
+        .and_then(|locs| locs.first())
+        .cloned()
+        .unwrap_or_default();
+    
+    // Fetch activities for each activity type
+    if let Some(activity_types) = &search_params.activities {
+        for activity_type in activity_types {
+            match vertex_service.search_activities(&[activity_type.clone()], &location_query).await {
+                Ok(response) => {
+                    println!("Vertex AI found {} results for activity type: {}", 
+                        response.results.len(), activity_type);
+                    
+                    // Convert Vertex search results to Activity models
+                    for result in response.results {
+                        if let Ok(activity) = parse_vertex_result_to_activity(&result) {
+                            all_activities.push(activity);
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Failed to search for activity type {}: {:?}", activity_type, e);
+                }
+            }
+        }
+    }
+    
+    Ok(all_activities)
+}
+
+/// Convert Vertex AI search result to Activity model
+fn parse_vertex_result_to_activity(result: &crate::services::vertex_search_service::SearchResult) -> Result<crate::models::activity::Activity, Box<dyn std::error::Error>> {
+    use mongodb::bson::oid::ObjectId;
+    
+    // Extract data from the structured data
+    let struct_data = &result.document.struct_data;
+    
+    // Parse address
+    let address = if let Some(addr_str) = struct_data.get("address").and_then(|v| v.as_str()) {
+        // Simple address parsing - in production you'd want more robust parsing
+        let parts: Vec<&str> = addr_str.split(',').collect();
+        crate::models::activity::Address {
+            street: parts.get(0).unwrap_or(&"").trim().to_string(),
+            unit: "".to_string(),
+            city: parts.get(1).unwrap_or(&"").trim().to_string(),
+            state: parts.get(2).unwrap_or(&"").trim().to_string(),
+            zip: parts.get(3).unwrap_or(&"").trim().to_string(),
+            country: "USA".to_string(),
+        }
+    } else {
+        crate::models::activity::Address {
+            street: "".to_string(),
+            unit: "".to_string(),
+            city: "".to_string(),
+            state: "".to_string(),
+            zip: "".to_string(),
+            country: "USA".to_string(),
+        }
+    };
+    
+    // Parse time slots
+    let daily_time_slots = struct_data.get("daily_time_slots")
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.iter()
+            .filter_map(|slot| {
+                if let Some(slot_obj) = slot.as_object() {
+                    Some(crate::models::activity::TimeSlot {
+                        start: slot_obj.get("start").and_then(|v| v.as_str()).unwrap_or("09:00").to_string(),
+                        end: slot_obj.get("end").and_then(|v| v.as_str()).unwrap_or("17:00").to_string(),
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect())
+        .unwrap_or_else(|| vec![crate::models::activity::TimeSlot {
+            start: "09:00".to_string(),
+            end: "17:00".to_string(),
+        }]);
+    
+    let activity = crate::models::activity::Activity {
+        id: Some(ObjectId::new()),
+        company: struct_data.get("company")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Unknown Company")
+            .to_string(),
+        company_id: struct_data.get("company_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        booking_link: struct_data.get("booking_link")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        online_booking_status: "available".to_string(),
+        guide: struct_data.get("guide")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
+        title: struct_data.get("title")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Unknown Activity")
+            .to_string(),
+        description: struct_data.get("description")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        activity_types: struct_data.get("activity_types")
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.iter()
+                .filter_map(|v| v.as_str())
+                .map(|s| s.to_string())
+                .collect())
+            .unwrap_or_default(),
+        tags: struct_data.get("tags")
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.iter()
+                .filter_map(|v| v.as_str())
+                .map(|s| s.to_string())
+                .collect())
+            .unwrap_or_default(),
+        price_per_person: struct_data.get("price")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0) as f32,
+        duration_minutes: struct_data.get("duration")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(120) as u16, // Default 2 hours
+        daily_time_slots,
+        address,
+        whats_included: struct_data.get("whats_included")
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.iter()
+                .filter_map(|v| v.as_str())
+                .map(|s| s.to_string())
+                .collect())
+            .unwrap_or_default(),
+        weight_limit_lbs: struct_data.get("weight_limit")
+            .and_then(|v| v.as_i64())
+            .map(|w| w as u16),
+        age_requirement: struct_data.get("age_requirement")
+            .and_then(|v| v.as_i64())
+            .map(|a| a as u8),
+        height_requiremnt: struct_data.get("height_requirement")
+            .and_then(|v| v.as_i64())
+            .map(|h| h as u8),
+        blackout_date_ranges: None,
+        capacity: crate::models::activity::Capacity {
+            minimum: struct_data.get("min_capacity").and_then(|v| v.as_i64()).unwrap_or(1) as u16,
+            maximum: struct_data.get("max_capacity").and_then(|v| v.as_i64()).unwrap_or(20) as u16,
+        },
+        created_at: None,
+        updated_at: None,
+    };
+    
+    Ok(activity)
 }
 
 /// Find activities using Vertex AI Search and generate itineraries from them

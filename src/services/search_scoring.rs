@@ -2,7 +2,7 @@ use crate::models::{activity::Activity, itinerary::base::FeaturedVacation, searc
 use futures::TryStreamExt;
 use mongodb::{bson::oid::ObjectId, Client};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchWeights {
@@ -16,6 +16,8 @@ pub struct SearchWeights {
     pub lodging_weight: f32,
     /// Weight for transportation matching
     pub transportation_weight: f32,
+    /// Weight for trip pace matching
+    pub trip_pace_weight: f32,
     /// Minimum score required to include in results
     pub minimum_score: f32,
 }
@@ -23,11 +25,12 @@ pub struct SearchWeights {
 impl Default for SearchWeights {
     fn default() -> Self {
         Self {
-            location_weight: 40.0,
-            activity_weight: 35.0,
+            location_weight: 35.0,
+            activity_weight: 30.0,
             group_size_weight: 15.0,
-            lodging_weight: 7.0,
+            lodging_weight: 5.0,
             transportation_weight: 3.0,
+            trip_pace_weight: 12.0,
             minimum_score: 15.0,
         }
     }
@@ -59,6 +62,10 @@ impl SearchWeights {
                 .ok()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(defaults.transportation_weight),
+            trip_pace_weight: std::env::var("SEARCH_TRIP_PACE_WEIGHT")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(defaults.trip_pace_weight),
             minimum_score: std::env::var("SEARCH_MIN_SCORE")
                 .ok()
                 .and_then(|s| s.parse().ok())
@@ -81,6 +88,7 @@ pub struct ScoreBreakdown {
     pub group_size_score: f32,
     pub lodging_score: f32,
     pub transportation_score: f32,
+    pub trip_pace_score: f32,
 }
 
 #[derive(Default)]
@@ -115,12 +123,14 @@ impl SearchScorer {
         let group_size_score = self.score_group_size(itinerary, search);
         let lodging_score = self.score_lodging(itinerary, search);
         let transportation_score = self.score_transportation(itinerary, search);
+        let trip_pace_score = self.score_trip_pace(itinerary, search);
 
         let total_score = location_score
             + activity_score
             + group_size_score
             + lodging_score
-            + transportation_score;
+            + transportation_score
+            + trip_pace_score;
 
         ScoredItinerary {
             itinerary: itinerary.clone(),
@@ -131,6 +141,7 @@ impl SearchScorer {
                 group_size_score,
                 lodging_score,
                 transportation_score,
+                trip_pace_score,
             },
         }
     }
@@ -424,6 +435,71 @@ impl SearchScorer {
             0.0
         }
     }
+    
+    /// Score trip pace matching
+    fn score_trip_pace(&self, itinerary: &FeaturedVacation, search: &SearchItinerary) -> f32 {
+        if let Some(search_pace) = &search.trip_pace {
+            // Count activities per day in the itinerary
+            let mut total_activities = 0;
+            let mut total_activity_hours = 0.0;
+            let num_days = itinerary.days.days.len() as f32;
+            
+            for day_items in itinerary.days.days.values() {
+                let mut day_activities = 0;
+                let mut day_hours = 0.0;
+                
+                for item in day_items {
+                    if let crate::models::itinerary::base::DayItem::Activity { .. } = item {
+                        day_activities += 1;
+                        // Assume 2 hours per activity if we don't have duration info
+                        day_hours += 2.0;
+                    }
+                }
+                
+                total_activities += day_activities;
+                total_activity_hours += day_hours;
+            }
+            
+            let avg_activities_per_day = if num_days > 0.0 { total_activities as f32 / num_days } else { 0.0 };
+            let avg_hours_per_day = if num_days > 0.0 { total_activity_hours / num_days } else { 0.0 };
+            
+            // Score based on how well the itinerary matches the desired pace
+            let expected_activities = search_pace.typical_activities_per_day() as f32;
+            let expected_hours = search_pace.max_activity_hours_per_day();
+            
+            // Calculate activity count match (50% of pace score)
+            let activity_diff = (avg_activities_per_day - expected_activities).abs();
+            let activity_match = if activity_diff <= 0.5 {
+                1.0
+            } else if activity_diff <= 1.0 {
+                0.8
+            } else if activity_diff <= 2.0 {
+                0.5
+            } else {
+                0.2
+            };
+            
+            // Calculate hours match (50% of pace score)
+            let hours_diff = (avg_hours_per_day - expected_hours).abs();
+            let hours_match = if hours_diff <= 1.0 {
+                1.0
+            } else if hours_diff <= 2.0 {
+                0.8
+            } else if hours_diff <= 3.0 {
+                0.5
+            } else {
+                0.2
+            };
+            
+            // Combined score
+            let pace_match = (activity_match + hours_match) / 2.0;
+            
+            pace_match * self.weights.trip_pace_weight
+        } else {
+            // No pace preference, give partial credit
+            self.weights.trip_pace_weight * 0.5
+        }
+    }
 
     /// Score multiple itineraries and return sorted results above minimum threshold
     pub fn score_and_rank_itineraries(
@@ -470,12 +546,14 @@ impl AsyncSearchScorer {
         let group_size_score = self.score_group_size(itinerary, search);
         let lodging_score = self.score_lodging(itinerary, search);
         let transportation_score = self.score_transportation(itinerary, search);
+        let trip_pace_score = self.score_trip_pace(itinerary, search);
 
         let total_score = location_score
             + activity_score
             + group_size_score
             + lodging_score
-            + transportation_score;
+            + transportation_score
+            + trip_pace_score;
 
         ScoredItinerary {
             itinerary: itinerary.clone(),
@@ -486,6 +564,7 @@ impl AsyncSearchScorer {
                 group_size_score,
                 lodging_score,
                 transportation_score,
+                trip_pace_score,
             },
         }
     }
@@ -714,5 +793,10 @@ impl AsyncSearchScorer {
     fn matches_activity_synonyms(&self, search_term: &str, text: &str) -> bool {
         let scorer = SearchScorer { weights: self.weights.clone() };
         scorer.matches_activity_synonyms(search_term, text)
+    }
+    
+    fn score_trip_pace(&self, itinerary: &FeaturedVacation, search: &SearchItinerary) -> f32 {
+        let scorer = SearchScorer { weights: self.weights.clone() };
+        scorer.score_trip_pace(itinerary, search)
     }
 }
