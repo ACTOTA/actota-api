@@ -7,6 +7,7 @@ pub mod itinerary_generation_service;
 pub mod itinerary_search_service;
 pub mod itinerary_service;
 pub mod payment;
+pub mod pricing_service;
 pub mod route_optimization_service;
 pub mod search_scoring;
 pub mod stripe;

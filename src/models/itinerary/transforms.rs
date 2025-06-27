@@ -62,8 +62,8 @@ impl FeaturedVacation {
         // 1. Extract all activity and accommodation IDs
         let mut activity_ids = HashSet::new();
         let mut accommodation_ids = HashSet::new();
-        // Start with the base person_cost from the document
-        let person_cost: f32 = self.person_cost as f32;
+        // person_cost will be calculated after population, use placeholder for now
+        let person_cost: f32 = 0.0;
 
         println!("Days.days: {:?}", &self.days.days);
 
@@ -226,7 +226,7 @@ impl FeaturedVacation {
                                         .to_string(),
                                     activity_types: vec!["unknown".to_string()],
                                     tags: vec![],
-                                    price_per_person: 0,
+                                    price_per_person: 0.0,
                                     duration_minutes: 60,
                                     daily_time_slots: vec![],
                                     address: Address {
@@ -305,6 +305,10 @@ impl FeaturedVacation {
             activities,
             match_score: None,
             score_breakdown: None,
+            activity_cost: None,
+            lodging_cost: None,
+            transport_cost: None,
+            service_fee: None,
         })
     }
 }

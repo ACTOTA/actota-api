@@ -32,45 +32,33 @@ pub async fn get_by_id(path: web::Path<String>, data: web::Data<Arc<Client>>) ->
     };
 
     let filter = doc! { "_id": id };
-
-    println!("Filter: {:?}", filter);
-    // Before attempting to deserialize
-    //
-    println!(
-        "\n\nDocument structure: {}",
-        bson::to_document(&filter).unwrap()
-    );
-
-    // Try deserializing just the problematic field
-    if let Ok(cost) = filter.get_i32("min_group") {
-        println!("Successfully extracted person_cost: {}", cost);
-    } else {
-        println!(
-            "Failed to extract person_cost: {:?}",
-            filter.get("person_cost")
-        );
-    }
-
+    
     match collection.find_one(filter).await {
         Ok(Some(doc)) => {
-            println!("=== FULL DOCUMENT STRUCTURE ===");
-
-            // Get the raw BSON document
-            let raw_doc = match bson::to_raw_document_buf(&doc) {
-                Ok(raw) => raw,
-                Err(e) => {
-                    println!("Error converting to raw document: {:?}", e);
-                    return HttpResponse::InternalServerError().body("Conversion error");
-                }
-            };
-
-            println!("{:#?}", raw_doc);
-
             let processed_doc = get_images(vec![doc.clone()]).await;
-
-            // Add await here to resolve the future
+            
             match processed_doc[0].clone().populate(&client).await {
-                Ok(populated) => HttpResponse::Ok().json(populated),
+                Ok(mut populated) => {
+                    // Calculate costs using the pricing service
+                    let activity_cost = crate::services::pricing_service::PricingService::calculate_activity_cost(&populated);
+                    let lodging_cost = crate::services::pricing_service::PricingService::calculate_lodging_cost(&populated);
+                    let transport_cost = crate::services::pricing_service::PricingService::calculate_transport_cost(&populated);
+                    
+                    // Calculate person cost (total without service fee)
+                    let person_cost = crate::services::pricing_service::PricingService::calculate_person_cost(&populated);
+                    
+                    // Calculate service fee based on person cost
+                    let service_fee = crate::services::pricing_service::PricingService::calculate_service_fee(person_cost);
+                    
+                    // Set the calculated costs
+                    populated.person_cost = person_cost;
+                    populated.set_activity_cost(activity_cost);
+                    populated.set_lodging_cost(lodging_cost);
+                    populated.set_transport_cost(transport_cost);
+                    populated.set_service_fee(service_fee);
+                    
+                    HttpResponse::Ok().json(populated)
+                },
                 Err(err) => {
                     eprintln!("Failed to populate data: {:?}", err);
                     HttpResponse::InternalServerError().body("Failed to populate itinerary data")
@@ -170,7 +158,49 @@ pub async fn get_all(
                 let mut populated_itineraries = Vec::new();
                 for result in populate_results {
                     match result {
-                        Ok(populated) => populated_itineraries.push(populated),
+                        Ok(mut populated) => {
+                            // Calculate costs using the pricing service
+                            let activity_cost = crate::services::pricing_service::PricingService::calculate_activity_cost(&populated);
+                            let lodging_cost = crate::services::pricing_service::PricingService::calculate_lodging_cost(&populated);
+                            let transport_cost = crate::services::pricing_service::PricingService::calculate_transport_cost(&populated);
+                            
+                            // Calculate person cost (total without service fee)
+                            let person_cost = crate::services::pricing_service::PricingService::calculate_person_cost(&populated);
+                            
+                            // Calculate service fee based on person cost
+                            let service_fee = crate::services::pricing_service::PricingService::calculate_service_fee(person_cost);
+                            
+                            // Debug logging to verify calculations in paginated endpoint
+                            println!("=== PAGINATED ENDPOINT COST CALCULATIONS ===");
+                            println!("Itinerary: {}", populated.base.trip_name);
+                            println!("Activity cost: {}", activity_cost);
+                            println!("Lodging cost: {}", lodging_cost);
+                            println!("Transport cost: {}", transport_cost);
+                            println!("Calculated person cost: {}", person_cost);
+                            println!("Service fee: {}", service_fee);
+                            println!("BEFORE - populated.person_cost: {}", populated.person_cost);
+                            
+                            // Set the calculated costs
+                            populated.person_cost = person_cost;
+                            populated.set_activity_cost(activity_cost);
+                            populated.set_lodging_cost(lodging_cost);
+                            populated.set_transport_cost(transport_cost);
+                            populated.set_service_fee(service_fee);
+                            
+                            println!("AFTER - populated.person_cost: {}", populated.person_cost);
+                            
+                            // Let's also check what gets serialized by doing a quick test
+                            if let Ok(serialized) = serde_json::to_string(&populated) {
+                                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&serialized) {
+                                    if let Some(person_cost_value) = parsed.get("person_cost") {
+                                        println!("SERIALIZED person_cost value: {}", person_cost_value);
+                                    }
+                                }
+                            }
+                            println!("================================================");
+                            
+                            populated_itineraries.push(populated);
+                        },
                         Err(err) => {
                             eprintln!("Failed to populate itinerary: {:?}", err);
                             // Skip this itinerary if population fails
@@ -427,7 +457,7 @@ pub async fn search_itineraries_endpoint(
                 }
             }
 
-            // Copy match scores from populated itineraries to processed itineraries
+            // Copy match scores and calculated costs from populated itineraries to processed itineraries
             let mut processed_itineraries = processed_itineraries;
             for processed in &mut processed_itineraries {
                 if let Some(populated) = populated_itineraries.iter().find(|p| p.id() == processed.id) {
@@ -600,7 +630,7 @@ pub async fn search_or_generate(
                 }
             }
 
-            // Copy match scores from populated itineraries to processed itineraries
+            // Copy match scores and calculated costs from populated itineraries to processed itineraries
             let mut processed_itineraries = processed_itineraries;
             for processed in &mut processed_itineraries {
                 if let Some(populated) = populated_itineraries.iter().find(|p| p.id() == processed.id) {
@@ -765,7 +795,6 @@ async fn transform_to_search_response(
             images: itinerary.images.unwrap_or_default(),
             created_at: itinerary.created_at,
             updated_at: itinerary.updated_at,
-            person_cost: itinerary.person_cost,
             days: populated_days,
             activities: activity_summaries,
             match_score: itinerary.match_score,

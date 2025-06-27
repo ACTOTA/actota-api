@@ -84,7 +84,6 @@ pub struct FeaturedVacation {
     pub lodging: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transportation: Option<String>,
-    pub person_cost: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub created_at: Option<DateTime>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -123,7 +122,6 @@ impl Default for FeaturedVacation {
             pets: None,
             lodging: None,
             transportation: None,
-            person_cost: 0.0,
             created_at: None,
             updated_at: None,
             tag: None,

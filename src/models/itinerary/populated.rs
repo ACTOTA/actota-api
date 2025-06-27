@@ -1,11 +1,53 @@
 use mongodb::bson::DateTime;
 use mongodb::bson::oid::ObjectId;
 use serde::ser::SerializeStruct;
-use serde::{Deserialize, Serialize, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
 
 use super::base::{FeaturedVacation, ItemLocation};
 use crate::services::search_scoring::ScoreBreakdown;
+
+// Custom deserializer to handle floating point to u16 conversion
+fn deserialize_rounded_u16<'de, D>(deserializer: D) -> Result<u16, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value: serde_json::Value = serde_json::Value::deserialize(deserializer)?;
+    match value {
+        serde_json::Value::Number(n) => {
+            if let Some(f) = n.as_f64() {
+                Ok(f.ceil() as u16)
+            } else if let Some(i) = n.as_u64() {
+                Ok(i as u16)
+            } else {
+                Ok(0)
+            }
+        }
+        _ => Ok(0),
+    }
+}
+
+// Custom deserializer for optional u16 fields
+fn deserialize_optional_rounded_u16<'de, D>(deserializer: D) -> Result<Option<u16>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value: Option<serde_json::Value> = Option::deserialize(deserializer)?;
+    match value {
+        None => Ok(None),
+        Some(serde_json::Value::Number(n)) => {
+            if let Some(f) = n.as_f64() {
+                Ok(Some(f.ceil() as u16))
+            } else if let Some(i) = n.as_u64() {
+                Ok(Some(i as u16))
+            } else {
+                Ok(None)
+            }
+        }
+        Some(serde_json::Value::Null) => Ok(None),
+        _ => Ok(None),
+    }
+}
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct TimeSlot {
@@ -25,8 +67,10 @@ pub struct Address {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Capacity {
-    pub minimum: u32,
-    pub maximum: u32,
+    #[serde(deserialize_with = "deserialize_rounded_u16")]
+    pub minimum: u16,
+    #[serde(deserialize_with = "deserialize_rounded_u16")]
+    pub maximum: u16,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -41,14 +85,17 @@ pub struct ActivityModel {
     pub description: String,
     pub activity_types: Vec<String>,
     pub tags: Vec<String>,
-    pub price_per_person: u32,
-    pub duration_minutes: u32,
+    pub price_per_person: f32,
+    pub duration_minutes: u16,
     pub daily_time_slots: Vec<TimeSlot>,
     pub address: Address,
     pub whats_included: Vec<String>,
-    pub weight_limit_lbs: Option<u32>,
-    pub age_requirement: Option<u32>,
-    pub height_requirement: Option<u32>,
+    #[serde(deserialize_with = "deserialize_optional_rounded_u16", default)]
+    pub weight_limit_lbs: Option<u16>,
+    #[serde(deserialize_with = "deserialize_optional_rounded_u16", default)]
+    pub age_requirement: Option<u16>,
+    #[serde(deserialize_with = "deserialize_optional_rounded_u16", default)]
+    pub height_requirement: Option<u16>,
     // pub blackout_date_ranges: Option<Vec<String>>, // Update later
     pub capacity: Capacity,
     // For the frontend
@@ -119,6 +166,10 @@ pub struct PopulatedFeaturedVacation {
     pub activities: Vec<ActivitySummary>,
     pub match_score: Option<u8>, // Score from 0-100
     pub score_breakdown: Option<ScoreBreakdown>, // Detailed score breakdown
+    pub activity_cost: Option<f32>, // Total activity costs
+    pub lodging_cost: Option<f32>, // Total lodging costs
+    pub transport_cost: Option<f32>, // Total transport costs
+    pub service_fee: Option<f32>, // Service fee
 }
 
 // Custom serialization to handle the composition
@@ -131,6 +182,10 @@ impl Serialize for PopulatedFeaturedVacation {
         let mut field_count = 18;
         if self.match_score.is_some() { field_count += 1; }
         if self.score_breakdown.is_some() { field_count += 1; }
+        if self.activity_cost.is_some() { field_count += 1; }
+        if self.lodging_cost.is_some() { field_count += 1; }
+        if self.transport_cost.is_some() { field_count += 1; }
+        if self.service_fee.is_some() { field_count += 1; }
         let mut state = serializer.serialize_struct("PopulatedFeaturedVacation", field_count)?;
 
         // Serialize all base fields
@@ -167,6 +222,20 @@ impl Serialize for PopulatedFeaturedVacation {
         if let Some(breakdown) = &self.score_breakdown {
             state.serialize_field("score_breakdown", breakdown)?;
         }
+        
+        // Serialize the cost fields if present
+        if let Some(activity_cost) = self.activity_cost {
+            state.serialize_field("activity_cost", &activity_cost)?;
+        }
+        if let Some(lodging_cost) = self.lodging_cost {
+            state.serialize_field("lodging_cost", &lodging_cost)?;
+        }
+        if let Some(transport_cost) = self.transport_cost {
+            state.serialize_field("transport_cost", &transport_cost)?;
+        }
+        if let Some(service_fee) = self.service_fee {
+            state.serialize_field("service_fee", &service_fee)?;
+        }
 
         state.end()
     }
@@ -187,6 +256,10 @@ impl PopulatedFeaturedVacation {
             activities,
             match_score: None,
             score_breakdown: None,
+            activity_cost: None,
+            lodging_cost: None,
+            transport_cost: None,
+            service_fee: None,
         }
     }
 
@@ -208,5 +281,21 @@ impl PopulatedFeaturedVacation {
     
     pub fn set_score_breakdown(&mut self, breakdown: ScoreBreakdown) {
         self.score_breakdown = Some(breakdown);
+    }
+    
+    pub fn set_activity_cost(&mut self, cost: f32) {
+        self.activity_cost = Some(cost);
+    }
+    
+    pub fn set_lodging_cost(&mut self, cost: f32) {
+        self.lodging_cost = Some(cost);
+    }
+    
+    pub fn set_transport_cost(&mut self, cost: f32) {
+        self.transport_cost = Some(cost);
+    }
+    
+    pub fn set_service_fee(&mut self, fee: f32) {
+        self.service_fee = Some(fee);
     }
 }

@@ -24,7 +24,6 @@ pub struct SearchResponseItem {
     pub created_at: Option<DateTime>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub updated_at: Option<DateTime>,
-    pub person_cost: f64,
     pub days: HashMap<String, Vec<PopulatedDayItem>>,
     pub activities: Vec<ActivitySummary>,
     #[serde(skip_serializing_if = "Option::is_none")]
