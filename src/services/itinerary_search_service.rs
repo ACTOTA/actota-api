@@ -6,6 +6,7 @@ use bson::{doc, Document};
 use futures::TryStreamExt;
 use mongodb::{Client, Collection};
 use std::{collections::HashSet, sync::Arc};
+use futures::future;
 
 pub async fn search_itineraries(
     client: Arc<Client>,
@@ -285,71 +286,90 @@ pub async fn search_or_generate_itineraries(
     let collection: Collection<FeaturedVacation> =
         client.database("Itineraries").collection("Featured");
 
-    // Generate enough itineraries to meet the threshold with variety
+    // Generate enough itineraries to meet the threshold with variety (async parallel)
     let needed_count = min_results_threshold.saturating_sub(results.len());
-    println!("Need to generate {} more itineraries", needed_count);
+    println!("Need to generate {} more itineraries asynchronously", needed_count);
     
     let mut generated_names = std::collections::HashSet::new();
-    let mut generation_attempts = 0;
-    let max_attempts = needed_count * 3; // Allow multiple attempts to ensure variety
     
-    for i in 1..=needed_count {
-        let mut attempt = 0;
-        let max_retries = 5;
-        
-        while attempt < max_retries && generation_attempts < max_attempts {
-            generation_attempts += 1;
+    // Create generation tasks in parallel
+    let generation_tasks: Vec<_> = (1..=needed_count)
+        .map(|i| {
+            let generator = generator.clone();
+            let search_params = search_params.clone();
+            let collection = collection.clone();
             
-            match generator.generate_unique_itinerary(&search_params, i, &generated_names).await {
-                Ok(generated_itinerary) => {
-                    // Check if this name is already used
-                    if generated_names.contains(&generated_itinerary.trip_name) {
-                        println!("Generated duplicate name '{}', retrying...", generated_itinerary.trip_name);
-                        attempt += 1;
-                        continue;
-                    }
-                    
-                    // Check if this itinerary is too similar to existing ones
-                    if is_too_similar_to_existing(&generated_itinerary, &results) {
-                        println!("Generated itinerary '{}' is too similar to existing ones, retrying...", generated_itinerary.trip_name);
-                        attempt += 1;
-                        continue;
-                    }
-                    
-                    println!(
-                        "Successfully generated unique itinerary {}/{}: {}",
-                        i, needed_count, generated_itinerary.trip_name
-                    );
-
-                    // Save the generated itinerary to the database
-                    match collection.insert_one(&generated_itinerary).await {
-                        Ok(insert_result) => {
+            tokio::spawn(async move {
+                let mut attempt = 0;
+                let max_retries = 3; // Reduced retries for speed
+                
+                while attempt < max_retries {
+                    match generator.generate_unique_itinerary(&search_params, i, &HashSet::new()).await {
+                        Ok(mut generated_itinerary) => {
                             println!(
-                                "Saved generated itinerary {} to database with ID: {:?}",
-                                i, insert_result.inserted_id
+                                "Successfully generated itinerary {}: {}",
+                                i, generated_itinerary.trip_name
                             );
+
+                            // Save to database with error handling
+                            match collection.insert_one(&generated_itinerary).await {
+                                Ok(insert_result) => {
+                                    // Update the ID from database
+                                    if let Some(object_id) = insert_result.inserted_id.as_object_id() {
+                                        generated_itinerary.id = Some(object_id);
+                                    }
+                                    println!(
+                                        "✅ Saved generated itinerary {} to database with ID: {:?}",
+                                        i, insert_result.inserted_id
+                                    );
+                                    return Ok(generated_itinerary);
+                                }
+                                Err(e) => {
+                                    eprintln!("❌ Failed to save generated itinerary to database: {}", e);
+                                    // Return the itinerary anyway for this request, even if DB save failed
+                                    return Ok(generated_itinerary);
+                                }
+                            }
                         }
                         Err(e) => {
-                            eprintln!("Failed to save generated itinerary to database: {}", e);
-                            // Continue anyway - the itinerary is still useful for this request
+                            eprintln!("Failed to generate itinerary {} (attempt {}): {}", i, attempt + 1, e);
+                            attempt += 1;
                         }
                     }
+                }
+                
+                Err(format!("Failed to generate unique itinerary {} after {} attempts", i, max_retries))
+            })
+        })
+        .collect();
 
+    // Wait for all generation tasks to complete
+    let generation_results = futures::future::join_all(generation_tasks).await;
+    
+    // Process results and add successful generations
+    for (i, task_result) in generation_results.into_iter().enumerate() {
+        match task_result {
+            Ok(Ok(generated_itinerary)) => {
+                // Check for duplicates before adding
+                if !generated_names.contains(&generated_itinerary.trip_name) &&
+                   !is_too_similar_to_existing(&generated_itinerary, &results) {
                     generated_names.insert(generated_itinerary.trip_name.clone());
                     results.push(generated_itinerary);
-                    break; // Successfully generated unique itinerary
-                }
-                Err(e) => {
-                    eprintln!("Failed to generate itinerary {} (attempt {}): {}", i, attempt + 1, e);
-                    attempt += 1;
+                } else {
+                    println!("⚠️  Skipping duplicate/similar itinerary: {}", generated_itinerary.trip_name);
                 }
             }
-        }
-        
-        if attempt >= max_retries {
-            println!("Failed to generate unique itinerary {} after {} attempts", i, max_retries);
+            Ok(Err(e)) => {
+                eprintln!("Generation task {} failed: {}", i + 1, e);
+            }
+            Err(e) => {
+                eprintln!("Generation task {} panicked: {:?}", i + 1, e);
+            }
         }
     }
+    
+    println!("🎯 Parallel generation complete. Generated {} unique itineraries", 
+        results.len().saturating_sub(min_results_threshold.saturating_sub(needed_count)));
 
     Ok(results)
 }

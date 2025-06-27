@@ -51,11 +51,11 @@ pub struct ItinerarySubmission {
     pub updated_at: Option<DateTime>,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct FeaturedVacation {
     #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
     pub id: Option<ObjectId>,
-    pub fareharbor_id: Option<u32>,
+    pub fareharbor_id: Option<String>,
     pub trip_name: String,
     pub min_age: Option<u32>,
     pub min_group: u32,
@@ -84,8 +84,7 @@ pub struct FeaturedVacation {
     pub lodging: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transportation: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub person_cost: Option<f64>,
+    pub person_cost: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub created_at: Option<DateTime>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -98,6 +97,41 @@ pub struct FeaturedVacation {
     pub match_score: Option<u8>, // Score from 0-100
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub score_breakdown: Option<crate::services::search_scoring::ScoreBreakdown>, // Detailed score breakdown
+}
+
+impl Default for FeaturedVacation {
+    fn default() -> Self {
+        Self {
+            id: None,
+            fareharbor_id: None,
+            trip_name: String::new(),
+            min_age: None,
+            min_group: 1,
+            max_group: 1,
+            length_days: 1,
+            length_hours: 24,
+            start_location: Location::default(),
+            end_location: Location::default(),
+            description: String::new(),
+            days: Days::default(),
+            images: None,
+            arrival_datetime: None,
+            departure_datetime: None,
+            adults: None,
+            children: None,
+            infants: None,
+            pets: None,
+            lodging: None,
+            transportation: None,
+            person_cost: 0.0,
+            created_at: None,
+            updated_at: None,
+            tag: None,
+            activities: None,
+            match_score: None,
+            score_breakdown: None,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]

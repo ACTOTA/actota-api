@@ -9,7 +9,7 @@ use std::collections::HashMap;
 pub struct SearchResponseItem {
     #[serde(rename = "_id")]
     pub id: ObjectId,
-    pub fareharbor_id: Option<u32>,
+    pub fareharbor_id: Option<String>,
     pub trip_name: String,
     pub min_age: Option<u32>,
     pub min_group: u32,

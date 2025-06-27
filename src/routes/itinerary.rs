@@ -765,7 +765,7 @@ async fn transform_to_search_response(
             images: itinerary.images.unwrap_or_default(),
             created_at: itinerary.created_at,
             updated_at: itinerary.updated_at,
-            person_cost: itinerary.person_cost.unwrap_or(0.0),
+            person_cost: itinerary.person_cost,
             days: populated_days,
             activities: activity_summaries,
             match_score: itinerary.match_score,

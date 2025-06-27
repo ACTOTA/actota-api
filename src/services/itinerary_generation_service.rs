@@ -8,6 +8,7 @@ use chrono::{Datelike, Duration, NaiveDate, NaiveDateTime, NaiveTime, Utc};
 use mongodb::{bson::oid::ObjectId, Client, Collection};
 use std::{collections::HashMap, sync::Arc};
 
+#[derive(Clone)]
 pub struct ItineraryGenerator {
     client: Arc<Client>,
     vertex_search_service: Option<VertexSearchService>,
@@ -100,7 +101,7 @@ impl ItineraryGenerator {
             end_location: locations.1.clone(),
             description,
             days: crate::models::itinerary::base::Days { days },
-            images: None,
+            images: Some(vec![]), // Initialize as empty array instead of None
             arrival_datetime: Some(mongodb::bson::DateTime::from_millis(
                 arrival_date.and_utc().timestamp_millis(),
             )),
@@ -111,9 +112,9 @@ impl ItineraryGenerator {
             children: search_params.children,
             infants: search_params.infants,
             pets: Some(0),
-            lodging: search_params.lodging.clone(),
-            transportation: search_params.transportation.clone(),
-            person_cost: Some(person_cost as f64),
+            lodging: Some(search_params.lodging.clone().unwrap_or_default()),
+            transportation: search_params.transportation.clone().or_else(|| Some("Private Vehicle".to_string())),
+            person_cost: person_cost as f64,
             created_at: Some(mongodb::bson::DateTime::now()),
             updated_at: Some(mongodb::bson::DateTime::now()),
             tag: Some("generated".to_string()),
@@ -140,27 +141,27 @@ impl ItineraryGenerator {
         search_params: &SearchItinerary,
         variation_index: usize,
         existing_names: &std::collections::HashSet<String>,
-    ) -> Result<FeaturedVacation, Box<dyn std::error::Error>> {
+    ) -> Result<FeaturedVacation, String> {
         // Get activities and locations
-        let activities = self.fetch_activities(search_params).await?;
+        let activities = self.fetch_activities(search_params).await.map_err(|e| e.to_string())?;
         let locations = self.get_locations(search_params);
 
         if activities.is_empty() {
-            return Err("No matching activities found".into());
+            return Err("No matching activities found".to_string());
         }
 
         // Calculate trip duration
         let arrival_str = search_params
             .arrival_datetime
             .as_ref()
-            .ok_or("Arrival datetime required")?;
+            .ok_or("Arrival datetime required".to_string())?;
         let departure_str = search_params
             .departure_datetime
             .as_ref()
-            .ok_or("Departure datetime required")?;
+            .ok_or("Departure datetime required".to_string())?;
 
-        let arrival_date = self.parse_datetime(arrival_str)?;
-        let departure_date = self.parse_datetime(departure_str)?;
+        let arrival_date = self.parse_datetime(arrival_str).map_err(|e| e.to_string())?;
+        let departure_date = self.parse_datetime(departure_str).map_err(|e| e.to_string())?;
 
         let trip_duration_days = (departure_date - arrival_date).num_days() as u32;
 
@@ -173,7 +174,7 @@ impl ItineraryGenerator {
             trip_duration_days,
             search_params.trip_pace.as_ref(),
             variation_index,
-        )?;
+        ).map_err(|e| e.to_string())?;
 
         // Calculate cost with some variation
         let base_cost = self.calculate_cost(&days, &activities);
@@ -196,7 +197,7 @@ impl ItineraryGenerator {
             end_location: locations.1.clone(),
             description,
             days: crate::models::itinerary::base::Days { days },
-            images: None,
+            images: Some(vec![]), // Initialize as empty array instead of None
             arrival_datetime: Some(mongodb::bson::DateTime::from_millis(
                 arrival_date.and_utc().timestamp_millis(),
             )),
@@ -207,9 +208,9 @@ impl ItineraryGenerator {
             children: search_params.children,
             infants: search_params.infants,
             pets: Some(0),
-            lodging: search_params.lodging.clone(),
-            transportation: search_params.transportation.clone(),
-            person_cost: Some(person_cost as f64),
+            lodging: Some(search_params.lodging.clone().unwrap_or_default()),
+            transportation: search_params.transportation.clone().or_else(|| Some("Private Vehicle".to_string())),
+            person_cost: person_cost as f64,
             created_at: Some(mongodb::bson::DateTime::now()),
             updated_at: Some(mongodb::bson::DateTime::now()),
             tag: Some("generated".to_string()),
@@ -305,12 +306,24 @@ impl ItineraryGenerator {
         trip_duration_days: u32,
         trip_pace: Option<&TripPace>,
         variation_index: usize,
-    ) -> Result<HashMap<String, Vec<DayItem>>, Box<dyn std::error::Error>> {
+    ) -> Result<HashMap<String, Vec<DayItem>>, String> {
         let pace = trip_pace.unwrap_or(&TripPace::Moderate);
         let max_hours_per_day = pace.max_activity_hours_per_day();
         let activities_per_day = pace.typical_activities_per_day();
 
         let mut daily_schedules = HashMap::new();
+        let mut used_activity_ids = std::collections::HashSet::new(); // Track used activities
+
+        // Create shuffled activity list for variation
+        let mut available_activities = activities.to_vec();
+        
+        // Shuffle based on variation_index for different orderings
+        for i in 0..available_activities.len() {
+            let swap_index = (i + variation_index * 7) % available_activities.len();
+            available_activities.swap(i, swap_index);
+        }
+        
+        let mut global_activity_index = 0; // Track position in shuffled list
 
         for day in 1..=trip_duration_days {
             let mut day_schedule = Vec::new();
@@ -326,39 +339,64 @@ impl ItineraryGenerator {
             };
 
             let mut current_hour = base_start_hour;
-
-            // Vary activity selection pattern
-            let activity_start_index = (variation_index * 2 + (day - 1) as usize) % activities.len();
             
             while activities_added < activities_per_day && day_hours < max_hours_per_day {
-                let activity_index = (activity_start_index + activities_added) % activities.len();
-                let activity = &activities[activity_index];
-
-                let activity_duration_hours = activity.duration_minutes as f32 / 60.0;
+                // Find next unused activity
+                let mut found_activity = false;
+                let start_search_index = global_activity_index;
                 
-                if day_hours + activity_duration_hours <= max_hours_per_day {
-                    let time = format!("{:02}:00:00", current_hour);
-                    
-                    if let Some(activity_id) = activity.id {
-                        day_schedule.push(DayItem::Activity {
-                            activity_id,
-                            time,
-                        });
-                        
-                        day_hours += activity_duration_hours;
-                        activities_added += 1;
-                        current_hour += activity_duration_hours.ceil() as u32;
-                        
-                        // Add buffer time between activities (varies by variation)
-                        let buffer_hours = match variation_index % 3 {
-                            0 => 1, // Tight schedule
-                            1 => 2, // Normal schedule
-                            2 => 3, // Relaxed schedule
-                            _ => 2,
-                        };
-                        current_hour += buffer_hours;
+                loop {
+                    if global_activity_index >= available_activities.len() {
+                        // If we've gone through all activities, we're done
+                        break;
                     }
-                } else {
+                    
+                    let activity = &available_activities[global_activity_index];
+                    
+                    // Check if this activity is already used
+                    if let Some(activity_id) = activity.id {
+                        if !used_activity_ids.contains(&activity_id) {
+                            let activity_duration_hours = activity.duration_minutes as f32 / 60.0;
+                            
+                            if day_hours + activity_duration_hours <= max_hours_per_day {
+                                let time = format!("{:02}:00:00", current_hour);
+                                
+                                day_schedule.push(DayItem::Activity {
+                                    activity_id,
+                                    time,
+                                });
+                                
+                                used_activity_ids.insert(activity_id); // Mark as used
+                                day_hours += activity_duration_hours;
+                                activities_added += 1;
+                                current_hour += activity_duration_hours.ceil() as u32;
+                                
+                                // Add buffer time between activities (varies by variation)
+                                let buffer_hours = match variation_index % 3 {
+                                    0 => 1, // Tight schedule
+                                    1 => 2, // Normal schedule
+                                    2 => 3, // Relaxed schedule
+                                    _ => 2,
+                                };
+                                current_hour += buffer_hours;
+                                
+                                global_activity_index += 1;
+                                found_activity = true;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    global_activity_index += 1;
+                    
+                    // If we've cycled back to where we started, stop looking
+                    if global_activity_index >= available_activities.len() {
+                        break;
+                    }
+                }
+                
+                if !found_activity {
+                    // No more suitable unused activities available
                     break;
                 }
             }
@@ -621,6 +659,7 @@ impl ItineraryGenerator {
         }
         
         let mut days = HashMap::new();
+        let mut used_activity_ids = std::collections::HashSet::new(); // Track used activities
         
         // Determine activities per day based on trip pace
         let activities_per_day = trip_pace.typical_activities_per_day();
@@ -629,13 +668,14 @@ impl ItineraryGenerator {
         println!("Trip pace: {:?}, activities per day: {}, max hours: {}", 
             trip_pace, activities_per_day, max_hours_per_day);
 
+        // Create a shuffled copy of activities for variety
+        let mut available_activities = activities.to_vec();
+        let mut global_activity_index = 0;
+
         for day_num in 1..=trip_duration_days {
             let day_key = day_num.to_string();
             let mut day_items = Vec::new();
             let mut day_hours = 0.0;
-
-            // Add activities for this day
-            let start_idx = ((day_num - 1) as usize * activities_per_day) % activities.len();
             
             // Start time based on trip pace
             let mut current_time = match trip_pace {
@@ -645,46 +685,58 @@ impl ItineraryGenerator {
             };
 
             let mut activities_added = 0;
-            let mut idx = start_idx;
             
             // Add activities until we reach the pace limit or run out of hours
-            // Note: Remove the idx < activities.len() condition to allow cycling through activities
             while activities_added < activities_per_day && day_hours < max_hours_per_day {
-                let activity = &activities[idx % activities.len()];
-                let activity_id = activity.id.unwrap_or_else(|| ObjectId::new());
-                let activity_duration_hours = activity.duration_minutes as f32 / 60.0;
+                // Find next unused activity
+                let mut found_activity = false;
+                let start_search_index = global_activity_index;
                 
-                println!("   📍 Day {}: Adding activity '{}' (ID: {:?}) at {}", 
-                    day_num, activity.title, activity_id, current_time.format("%H:%M:%S"));
-                
-                // Check if adding this activity would exceed daily hour limit
-                if day_hours + activity_duration_hours <= max_hours_per_day {
-                    day_items.push(DayItem::Activity {
-                        time: current_time.format("%H:%M:%S").to_string(),
-                        activity_id,
-                    });
+                // Search for unused activity starting from current index
+                for search_offset in 0..available_activities.len() {
+                    let idx = (global_activity_index + search_offset) % available_activities.len();
+                    let activity = &available_activities[idx];
                     
-                    day_hours += activity_duration_hours;
-                    activities_added += 1;
-                    
-                    // Add break time between activities based on pace
-                    let break_time = match trip_pace {
-                        TripPace::Relaxed => Duration::minutes(90),   // Longer breaks
-                        TripPace::Moderate => Duration::minutes(60),  // Moderate breaks
-                        TripPace::Adventure => Duration::minutes(30), // Short breaks
-                    };
-                    
-                    current_time = current_time + Duration::minutes(activity.duration_minutes as i64) + break_time;
-                } else {
-                    println!("   ⚠️  Day {}: Skipping activity '{}' - would exceed daily hour limit ({} + {} > {})", 
-                        day_num, activity.title, day_hours, activity_duration_hours, max_hours_per_day);
+                    if let Some(activity_id) = activity.id {
+                        // Check if this activity is already used
+                        if !used_activity_ids.contains(&activity_id) {
+                            let activity_duration_hours = activity.duration_minutes as f32 / 60.0;
+                            
+                            // Check if adding this activity would exceed daily hour limit
+                            if day_hours + activity_duration_hours <= max_hours_per_day {
+                                println!("   📍 Day {}: Adding activity '{}' (ID: {:?}) at {}", 
+                                    day_num, activity.title, activity_id, current_time.format("%H:%M:%S"));
+                                
+                                day_items.push(DayItem::Activity {
+                                    time: current_time.format("%H:%M:%S").to_string(),
+                                    activity_id,
+                                });
+                                
+                                used_activity_ids.insert(activity_id); // Mark as used
+                                day_hours += activity_duration_hours;
+                                activities_added += 1;
+                                
+                                // Add break time between activities based on pace
+                                let break_time = match trip_pace {
+                                    TripPace::Relaxed => Duration::minutes(90),   // Longer breaks
+                                    TripPace::Moderate => Duration::minutes(60),  // Moderate breaks
+                                    TripPace::Adventure => Duration::minutes(30), // Short breaks
+                                };
+                                
+                                current_time = current_time + Duration::minutes(activity.duration_minutes as i64) + break_time;
+                                global_activity_index = (idx + 1) % available_activities.len();
+                                found_activity = true;
+                                break;
+                            } else {
+                                println!("   ⚠️  Day {}: Skipping activity '{}' - would exceed daily hour limit ({} + {} > {})", 
+                                    day_num, activity.title, day_hours, activity_duration_hours, max_hours_per_day);
+                            }
+                        }
+                    }
                 }
                 
-                idx += 1;
-                
-                // Safety check to prevent infinite loops in case all activities are too long
-                if idx - start_idx >= activities.len() * 2 {
-                    println!("   ⚠️  Day {}: Checked all activities twice, stopping to prevent infinite loop", day_num);
+                if !found_activity {
+                    println!("   ⚠️  Day {}: No more suitable unused activities available", day_num);
                     break;
                 }
             }

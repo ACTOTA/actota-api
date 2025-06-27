@@ -80,6 +80,7 @@ impl From<reqwest::Error> for VertexSearchError {
     }
 }
 
+#[derive(Clone)]
 pub struct VertexSearchService {
     client: Client,
     project_id: String,

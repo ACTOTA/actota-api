@@ -63,7 +63,7 @@ impl FeaturedVacation {
         let mut activity_ids = HashSet::new();
         let mut accommodation_ids = HashSet::new();
         // Start with the base person_cost from the document
-        let person_cost: f32 = self.person_cost.unwrap_or(0.0) as f32;
+        let person_cost: f32 = self.person_cost as f32;
 
         println!("Days.days: {:?}", &self.days.days);
 
