@@ -75,7 +75,20 @@ pub async fn get_all(data: web::Data<Arc<Client>>) -> impl Responder {
 
             for vacation in processed_vacations.iter() {
                 match vacation.clone().populate(&client).await {
-                    Ok(populated) => populated_vacations.push(populated),
+                    Ok(mut populated) => {
+                        // Log original image count
+                        let original_image_count = populated.base.images.as_ref().map(|imgs| imgs.len()).unwrap_or(0);
+                        println!("Featured vacation '{}' has {} original images", populated.base.trip_name, original_image_count);
+                        
+                        // Populate images from activities if no itinerary images exist
+                        populated.populate_images_from_activities();
+                        
+                        // Log final image count
+                        let final_image_count = populated.base.images.as_ref().map(|imgs| imgs.len()).unwrap_or(0);
+                        println!("Featured vacation '{}' now has {} images after population", populated.base.trip_name, final_image_count);
+                        
+                        populated_vacations.push(populated);
+                    },
                     Err(err) => {
                         eprintln!("Failed to populate vacation: {:?}", err);
                         // Add the original vacation without population

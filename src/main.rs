@@ -382,10 +382,10 @@ async fn main() -> std::io::Result<()> {
                 web::scope("/itineraries")
                                     // Public routes
                                     // This route is to be removed
-                                    .route(
-                                        "/featured",
-                                        web::get().to(routes::featured_vacation::get_all),
-                                    )
+                                    // .route(
+                                    //     "/featured",
+                                    //     web::get().to(routes::featured_vacation::get_all),
+                                    // )
                                     // Get all itineraries
                                     .route("", web::get().to(routes::itinerary::get_all))
                                     // Search itineraries with filters

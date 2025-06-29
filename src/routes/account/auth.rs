@@ -182,7 +182,7 @@ pub fn generate_token(
     let claims = Claims {
         sub: email.to_string(),
         iat: now.timestamp() as usize,
-        exp: (now + Duration::hours(24)).timestamp() as usize,
+        exp: (now + Duration::days(14)).timestamp() as usize,
         user_id: user_id.to_string(),
         role: role_string,
     };

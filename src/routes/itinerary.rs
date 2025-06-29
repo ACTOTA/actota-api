@@ -1,7 +1,7 @@
 use crate::models::itinerary::base::{Activity, ItinerarySubmission};
 use crate::models::itinerary::populated::PopulatedFeaturedVacation;
+use crate::models::search_response::{ActivitySummary, PopulatedDayItem, SearchResponseItem};
 use crate::models::{itinerary::base::FeaturedVacation, search::SearchItinerary};
-use crate::models::search_response::{SearchResponseItem, PopulatedDayItem, ActivitySummary};
 use crate::services::itinerary_search_service::search_or_generate_itineraries;
 use crate::services::itinerary_service::get_images;
 use crate::services::search_scoring::AsyncSearchScorer;
@@ -10,8 +10,8 @@ use bson::{doc, DateTime};
 use futures::TryStreamExt;
 use mongodb::{bson::oid::ObjectId, Client};
 use serde::Deserialize;
-use std::sync::Arc;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 #[derive(Deserialize)]
 pub struct PaginationQuery {
@@ -32,33 +32,51 @@ pub async fn get_by_id(path: web::Path<String>, data: web::Data<Arc<Client>>) ->
     };
 
     let filter = doc! { "_id": id };
-    
+
     match collection.find_one(filter).await {
         Ok(Some(doc)) => {
             let processed_doc = get_images(vec![doc.clone()]).await;
-            
+
             match processed_doc[0].clone().populate(&client).await {
                 Ok(mut populated) => {
                     // Calculate costs using the pricing service
-                    let activity_cost = crate::services::pricing_service::PricingService::calculate_activity_cost(&populated);
-                    let lodging_cost = crate::services::pricing_service::PricingService::calculate_lodging_cost(&populated);
-                    let transport_cost = crate::services::pricing_service::PricingService::calculate_transport_cost(&populated);
-                    
+                    let activity_cost =
+                        crate::services::pricing_service::PricingService::calculate_activity_cost(
+                            &populated,
+                        );
+                    let lodging_cost =
+                        crate::services::pricing_service::PricingService::calculate_lodging_cost(
+                            &populated,
+                        );
+                    let transport_cost =
+                        crate::services::pricing_service::PricingService::calculate_transport_cost(
+                            &populated,
+                        );
+
                     // Calculate person cost (total without service fee)
-                    let person_cost = crate::services::pricing_service::PricingService::calculate_person_cost(&populated);
-                    
+                    let person_cost =
+                        crate::services::pricing_service::PricingService::calculate_person_cost(
+                            &populated,
+                        );
+
                     // Calculate service fee based on person cost
-                    let service_fee = crate::services::pricing_service::PricingService::calculate_service_fee(person_cost);
-                    
+                    let service_fee =
+                        crate::services::pricing_service::PricingService::calculate_service_fee(
+                            person_cost,
+                        );
+
                     // Set the calculated costs
                     populated.person_cost = person_cost;
                     populated.set_activity_cost(activity_cost);
                     populated.set_lodging_cost(lodging_cost);
                     populated.set_transport_cost(transport_cost);
                     populated.set_service_fee(service_fee);
-                    
+
+                    // Populate images from activities if no itinerary images exist
+                    populated.populate_images_from_activities();
+
                     HttpResponse::Ok().json(populated)
-                },
+                }
                 Err(err) => {
                     eprintln!("Failed to populate data: {:?}", err);
                     HttpResponse::InternalServerError().body("Failed to populate itinerary data")
@@ -109,7 +127,7 @@ pub async fn get_all(
         .collection::<FeaturedVacation>("Featured");
 
     // Extract pagination parameters with defaults
-    let limit = query.limit.unwrap_or(10); // Default to 10 items per page
+    let limit = query.limit.unwrap_or(50); // Default to 50 items per page if not specified
     let page = query.page.unwrap_or(1); // Default to page 1
     let skip = (page - 1) * limit;
 
@@ -156,54 +174,73 @@ pub async fn get_all(
                 let populate_results = futures::future::join_all(populate_futures).await;
 
                 let mut populated_itineraries = Vec::new();
-                for result in populate_results {
+                let mut failed_indices = Vec::new();
+                
+                for (index, result) in populate_results.into_iter().enumerate() {
                     match result {
                         Ok(mut populated) => {
                             // Calculate costs using the pricing service
                             let activity_cost = crate::services::pricing_service::PricingService::calculate_activity_cost(&populated);
                             let lodging_cost = crate::services::pricing_service::PricingService::calculate_lodging_cost(&populated);
                             let transport_cost = crate::services::pricing_service::PricingService::calculate_transport_cost(&populated);
-                            
+
                             // Calculate person cost (total without service fee)
                             let person_cost = crate::services::pricing_service::PricingService::calculate_person_cost(&populated);
-                            
+
                             // Calculate service fee based on person cost
                             let service_fee = crate::services::pricing_service::PricingService::calculate_service_fee(person_cost);
-                            
-                            // Debug logging to verify calculations in paginated endpoint
-                            println!("=== PAGINATED ENDPOINT COST CALCULATIONS ===");
-                            println!("Itinerary: {}", populated.base.trip_name);
-                            println!("Activity cost: {}", activity_cost);
-                            println!("Lodging cost: {}", lodging_cost);
-                            println!("Transport cost: {}", transport_cost);
-                            println!("Calculated person cost: {}", person_cost);
-                            println!("Service fee: {}", service_fee);
-                            println!("BEFORE - populated.person_cost: {}", populated.person_cost);
-                            
+
                             // Set the calculated costs
                             populated.person_cost = person_cost;
                             populated.set_activity_cost(activity_cost);
                             populated.set_lodging_cost(lodging_cost);
                             populated.set_transport_cost(transport_cost);
                             populated.set_service_fee(service_fee);
-                            
-                            println!("AFTER - populated.person_cost: {}", populated.person_cost);
-                            
+
                             // Let's also check what gets serialized by doing a quick test
                             if let Ok(serialized) = serde_json::to_string(&populated) {
-                                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&serialized) {
+                                if let Ok(parsed) =
+                                    serde_json::from_str::<serde_json::Value>(&serialized)
+                                {
                                     if let Some(person_cost_value) = parsed.get("person_cost") {
-                                        println!("SERIALIZED person_cost value: {}", person_cost_value);
+                                        println!(
+                                            "SERIALIZED person_cost value: {}",
+                                            person_cost_value
+                                        );
                                     }
                                 }
                             }
-                            println!("================================================");
-                            
+
+                            // Populate images from activities if no itinerary images exist
+                            populated.populate_images_from_activities();
+
                             populated_itineraries.push(populated);
-                        },
+                        }
                         Err(err) => {
-                            eprintln!("Failed to populate itinerary: {:?}", err);
-                            // Skip this itinerary if population fails
+                            eprintln!("Failed to populate itinerary at index {}: {:?}", index, err);
+                            failed_indices.push(index);
+                        }
+                    }
+                }
+                
+                // If some population failed, include the original unpopulated itineraries
+                if !failed_indices.is_empty() {
+                    println!("Adding {} unpopulated itineraries due to population failures", failed_indices.len());
+                    for &failed_index in &failed_indices {
+                        if let Some(original_itinerary) = processed_itineraries.get(failed_index) {
+                            let populated = PopulatedFeaturedVacation {
+                                base: original_itinerary.clone(),
+                                person_cost: 0.0, // Default to 0.0 for f32
+                                populated_days: std::collections::HashMap::new(), // Empty HashMap
+                                activities: Vec::new(), // Empty Vec
+                                match_score: None,
+                                score_breakdown: None,
+                                activity_cost: None,
+                                lodging_cost: None,
+                                transport_cost: None,
+                                service_fee: None,
+                            };
+                            populated_itineraries.push(populated);
                         }
                     }
                 }
@@ -347,12 +384,16 @@ pub async fn search_itineraries_endpoint(
                 "Found/generated {} itineraries for frontend search",
                 itineraries.len()
             );
-            
+
             // Debug: Log each itinerary
             for (i, itinerary) in itineraries.iter().enumerate() {
-                println!("Itinerary {}: {} - {} days with {} total day items", 
-                    i, itinerary.trip_name, itinerary.length_days, 
-                    itinerary.days.days.values().map(|v| v.len()).sum::<usize>());
+                println!(
+                    "Itinerary {}: {} - {} days with {} total day items",
+                    i,
+                    itinerary.trip_name,
+                    itinerary.length_days,
+                    itinerary.days.days.values().map(|v| v.len()).sum::<usize>()
+                );
             }
 
             // Process images for all itineraries
@@ -392,7 +433,9 @@ pub async fn search_itineraries_endpoint(
                                 if let Some(scored) = scored_result {
                                     // Normalize total score to 0-100 scale
                                     let normalized_score = if max_possible_score > 0.0 {
-                                        ((scored.total_score / max_possible_score) * 100.0).min(100.0).max(0.0) as u8
+                                        ((scored.total_score / max_possible_score) * 100.0)
+                                            .min(100.0)
+                                            .max(0.0) as u8
                                     } else {
                                         0
                                     };
@@ -400,31 +443,73 @@ pub async fn search_itineraries_endpoint(
 
                                     // Normalize individual score components to 0-100 range
                                     let mut normalized_breakdown = scored.score_breakdown.clone();
-                                    
+
                                     // Normalize each component based on its maximum possible weight
-                                    normalized_breakdown.location_score = if scorer.weights.location_weight > 0.0 {
-                                        ((normalized_breakdown.location_score / scorer.weights.location_weight) * 100.0).min(100.0).max(0.0)
-                                    } else { 0.0 };
-                                    
-                                    normalized_breakdown.activity_score = if scorer.weights.activity_weight > 0.0 {
-                                        ((normalized_breakdown.activity_score / scorer.weights.activity_weight) * 100.0).min(100.0).max(0.0)
-                                    } else { 0.0 };
-                                    
-                                    normalized_breakdown.group_size_score = if scorer.weights.group_size_weight > 0.0 {
-                                        ((normalized_breakdown.group_size_score / scorer.weights.group_size_weight) * 100.0).min(100.0).max(0.0)
-                                    } else { 0.0 };
-                                    
-                                    normalized_breakdown.lodging_score = if scorer.weights.lodging_weight > 0.0 {
-                                        ((normalized_breakdown.lodging_score / scorer.weights.lodging_weight) * 100.0).min(100.0).max(0.0)
-                                    } else { 0.0 };
-                                    
-                                    normalized_breakdown.transportation_score = if scorer.weights.transportation_weight > 0.0 {
-                                        ((normalized_breakdown.transportation_score / scorer.weights.transportation_weight) * 100.0).min(100.0).max(0.0)
-                                    } else { 0.0 };
-                                    
-                                    normalized_breakdown.trip_pace_score = if scorer.weights.trip_pace_weight > 0.0 {
-                                        ((normalized_breakdown.trip_pace_score / scorer.weights.trip_pace_weight) * 100.0).min(100.0).max(0.0)
-                                    } else { 0.0 };
+                                    normalized_breakdown.location_score =
+                                        if scorer.weights.location_weight > 0.0 {
+                                            ((normalized_breakdown.location_score
+                                                / scorer.weights.location_weight)
+                                                * 100.0)
+                                                .min(100.0)
+                                                .max(0.0)
+                                        } else {
+                                            0.0
+                                        };
+
+                                    normalized_breakdown.activity_score =
+                                        if scorer.weights.activity_weight > 0.0 {
+                                            ((normalized_breakdown.activity_score
+                                                / scorer.weights.activity_weight)
+                                                * 100.0)
+                                                .min(100.0)
+                                                .max(0.0)
+                                        } else {
+                                            0.0
+                                        };
+
+                                    normalized_breakdown.group_size_score =
+                                        if scorer.weights.group_size_weight > 0.0 {
+                                            ((normalized_breakdown.group_size_score
+                                                / scorer.weights.group_size_weight)
+                                                * 100.0)
+                                                .min(100.0)
+                                                .max(0.0)
+                                        } else {
+                                            0.0
+                                        };
+
+                                    normalized_breakdown.lodging_score =
+                                        if scorer.weights.lodging_weight > 0.0 {
+                                            ((normalized_breakdown.lodging_score
+                                                / scorer.weights.lodging_weight)
+                                                * 100.0)
+                                                .min(100.0)
+                                                .max(0.0)
+                                        } else {
+                                            0.0
+                                        };
+
+                                    normalized_breakdown.transportation_score =
+                                        if scorer.weights.transportation_weight > 0.0 {
+                                            ((normalized_breakdown.transportation_score
+                                                / scorer.weights.transportation_weight)
+                                                * 100.0)
+                                                .min(100.0)
+                                                .max(0.0)
+                                        } else {
+                                            0.0
+                                        };
+
+                                    normalized_breakdown.trip_pace_score =
+                                        if scorer.weights.trip_pace_weight > 0.0 {
+                                            ((normalized_breakdown.trip_pace_score
+                                                / scorer.weights.trip_pace_weight)
+                                                * 100.0)
+                                                .min(100.0)
+                                                .max(0.0)
+                                        } else {
+                                            0.0
+                                        };
 
                                     populated.set_score_breakdown(normalized_breakdown);
                                 }
@@ -436,6 +521,9 @@ pub async fn search_itineraries_endpoint(
                                         populated.trip_name()
                                     );
                                 }
+
+                                // Populate images from activities if no itinerary images exist
+                                populated.populate_images_from_activities();
 
                                 Ok(populated)
                             }
@@ -460,23 +548,39 @@ pub async fn search_itineraries_endpoint(
             // Copy match scores and calculated costs from populated itineraries to processed itineraries
             let mut processed_itineraries = processed_itineraries;
             for processed in &mut processed_itineraries {
-                if let Some(populated) = populated_itineraries.iter().find(|p| p.id() == processed.id) {
+                if let Some(populated) = populated_itineraries
+                    .iter()
+                    .find(|p| p.id() == processed.id)
+                {
                     processed.match_score = populated.match_score;
                     processed.score_breakdown = populated.score_breakdown.clone();
-                    println!("   📊 Copied scores to {}: match_score={:?}, breakdown={:?}", 
-                        processed.trip_name, processed.match_score, processed.score_breakdown.is_some());
+                    // Copy images from the populated base
+                    processed.images = populated.base.images.clone();
+                    println!(
+                        "   📊 Copied scores and images to {}: match_score={:?}, breakdown={:?}, images={:?}",
+                        processed.trip_name,
+                        processed.match_score,
+                        processed.score_breakdown.is_some(),
+                        processed.images.as_ref().map(|imgs| imgs.len())
+                    );
                 }
             }
 
             // Debug: Log processed itineraries count and scores
-            println!("About to transform {} processed itineraries", processed_itineraries.len());
+            println!(
+                "About to transform {} processed itineraries",
+                processed_itineraries.len()
+            );
             for (i, itinerary) in processed_itineraries.iter().enumerate() {
-                println!("   🔢 Itinerary {}: {} - Score: {:?}", i, itinerary.trip_name, itinerary.match_score);
+                println!(
+                    "   🔢 Itinerary {}: {} - Score: {:?}",
+                    i, itinerary.trip_name, itinerary.match_score
+                );
             }
-            
+
             // Transform to the custom response format with populated activities
             let response_items = transform_to_search_response(&client, processed_itineraries).await;
-            
+
             println!("Transformed to {} response items", response_items.len());
             HttpResponse::Ok().json(response_items)
         }
@@ -565,7 +669,9 @@ pub async fn search_or_generate(
                                 if let Some(scored) = scored_result {
                                     // Normalize total score to 0-100 scale
                                     let normalized_score = if max_possible_score > 0.0 {
-                                        ((scored.total_score / max_possible_score) * 100.0).min(100.0).max(0.0) as u8
+                                        ((scored.total_score / max_possible_score) * 100.0)
+                                            .min(100.0)
+                                            .max(0.0) as u8
                                     } else {
                                         0
                                     };
@@ -573,31 +679,73 @@ pub async fn search_or_generate(
 
                                     // Normalize individual score components to 0-100 range
                                     let mut normalized_breakdown = scored.score_breakdown.clone();
-                                    
+
                                     // Normalize each component based on its maximum possible weight
-                                    normalized_breakdown.location_score = if scorer.weights.location_weight > 0.0 {
-                                        ((normalized_breakdown.location_score / scorer.weights.location_weight) * 100.0).min(100.0).max(0.0)
-                                    } else { 0.0 };
-                                    
-                                    normalized_breakdown.activity_score = if scorer.weights.activity_weight > 0.0 {
-                                        ((normalized_breakdown.activity_score / scorer.weights.activity_weight) * 100.0).min(100.0).max(0.0)
-                                    } else { 0.0 };
-                                    
-                                    normalized_breakdown.group_size_score = if scorer.weights.group_size_weight > 0.0 {
-                                        ((normalized_breakdown.group_size_score / scorer.weights.group_size_weight) * 100.0).min(100.0).max(0.0)
-                                    } else { 0.0 };
-                                    
-                                    normalized_breakdown.lodging_score = if scorer.weights.lodging_weight > 0.0 {
-                                        ((normalized_breakdown.lodging_score / scorer.weights.lodging_weight) * 100.0).min(100.0).max(0.0)
-                                    } else { 0.0 };
-                                    
-                                    normalized_breakdown.transportation_score = if scorer.weights.transportation_weight > 0.0 {
-                                        ((normalized_breakdown.transportation_score / scorer.weights.transportation_weight) * 100.0).min(100.0).max(0.0)
-                                    } else { 0.0 };
-                                    
-                                    normalized_breakdown.trip_pace_score = if scorer.weights.trip_pace_weight > 0.0 {
-                                        ((normalized_breakdown.trip_pace_score / scorer.weights.trip_pace_weight) * 100.0).min(100.0).max(0.0)
-                                    } else { 0.0 };
+                                    normalized_breakdown.location_score =
+                                        if scorer.weights.location_weight > 0.0 {
+                                            ((normalized_breakdown.location_score
+                                                / scorer.weights.location_weight)
+                                                * 100.0)
+                                                .min(100.0)
+                                                .max(0.0)
+                                        } else {
+                                            0.0
+                                        };
+
+                                    normalized_breakdown.activity_score =
+                                        if scorer.weights.activity_weight > 0.0 {
+                                            ((normalized_breakdown.activity_score
+                                                / scorer.weights.activity_weight)
+                                                * 100.0)
+                                                .min(100.0)
+                                                .max(0.0)
+                                        } else {
+                                            0.0
+                                        };
+
+                                    normalized_breakdown.group_size_score =
+                                        if scorer.weights.group_size_weight > 0.0 {
+                                            ((normalized_breakdown.group_size_score
+                                                / scorer.weights.group_size_weight)
+                                                * 100.0)
+                                                .min(100.0)
+                                                .max(0.0)
+                                        } else {
+                                            0.0
+                                        };
+
+                                    normalized_breakdown.lodging_score =
+                                        if scorer.weights.lodging_weight > 0.0 {
+                                            ((normalized_breakdown.lodging_score
+                                                / scorer.weights.lodging_weight)
+                                                * 100.0)
+                                                .min(100.0)
+                                                .max(0.0)
+                                        } else {
+                                            0.0
+                                        };
+
+                                    normalized_breakdown.transportation_score =
+                                        if scorer.weights.transportation_weight > 0.0 {
+                                            ((normalized_breakdown.transportation_score
+                                                / scorer.weights.transportation_weight)
+                                                * 100.0)
+                                                .min(100.0)
+                                                .max(0.0)
+                                        } else {
+                                            0.0
+                                        };
+
+                                    normalized_breakdown.trip_pace_score =
+                                        if scorer.weights.trip_pace_weight > 0.0 {
+                                            ((normalized_breakdown.trip_pace_score
+                                                / scorer.weights.trip_pace_weight)
+                                                * 100.0)
+                                                .min(100.0)
+                                                .max(0.0)
+                                        } else {
+                                            0.0
+                                        };
 
                                     populated.set_score_breakdown(normalized_breakdown);
                                 }
@@ -609,6 +757,9 @@ pub async fn search_or_generate(
                                         populated.trip_name()
                                     );
                                 }
+
+                                // Populate images from activities if no itinerary images exist
+                                populated.populate_images_from_activities();
 
                                 Ok(populated)
                             }
@@ -633,23 +784,39 @@ pub async fn search_or_generate(
             // Copy match scores and calculated costs from populated itineraries to processed itineraries
             let mut processed_itineraries = processed_itineraries;
             for processed in &mut processed_itineraries {
-                if let Some(populated) = populated_itineraries.iter().find(|p| p.id() == processed.id) {
+                if let Some(populated) = populated_itineraries
+                    .iter()
+                    .find(|p| p.id() == processed.id)
+                {
                     processed.match_score = populated.match_score;
                     processed.score_breakdown = populated.score_breakdown.clone();
-                    println!("   📊 Copied scores to {}: match_score={:?}, breakdown={:?}", 
-                        processed.trip_name, processed.match_score, processed.score_breakdown.is_some());
+                    // Copy images from the populated base
+                    processed.images = populated.base.images.clone();
+                    println!(
+                        "   📊 Copied scores and images to {}: match_score={:?}, breakdown={:?}, images={:?}",
+                        processed.trip_name,
+                        processed.match_score,
+                        processed.score_breakdown.is_some(),
+                        processed.images.as_ref().map(|imgs| imgs.len())
+                    );
                 }
             }
 
             // Debug: Log processed itineraries count and scores
-            println!("About to transform {} processed itineraries", processed_itineraries.len());
+            println!(
+                "About to transform {} processed itineraries",
+                processed_itineraries.len()
+            );
             for (i, itinerary) in processed_itineraries.iter().enumerate() {
-                println!("   🔢 Itinerary {}: {} - Score: {:?}", i, itinerary.trip_name, itinerary.match_score);
+                println!(
+                    "   🔢 Itinerary {}: {} - Score: {:?}",
+                    i, itinerary.trip_name, itinerary.match_score
+                );
             }
-            
+
             // Transform to the custom response format with populated activities
             let response_items = transform_to_search_response(&client, processed_itineraries).await;
-            
+
             println!("Transformed to {} response items", response_items.len());
             HttpResponse::Ok().json(response_items)
         }
@@ -660,7 +827,6 @@ pub async fn search_or_generate(
     }
 }
 
-
 /// Transform itineraries to the custom search response format with populated activities
 async fn transform_to_search_response(
     client: &Arc<Client>,
@@ -668,27 +834,34 @@ async fn transform_to_search_response(
 ) -> Vec<SearchResponseItem> {
     let mut response_items = Vec::new();
     let mut seen_ids = std::collections::HashSet::new();
-    
+
     // Get activities collection
     let activities_collection: mongodb::Collection<crate::models::activity::Activity> =
         client.database("Options").collection("Activity");
-    
+
     for itinerary in itineraries {
         // Skip duplicates
         if let Some(id) = itinerary.id {
             if seen_ids.contains(&id) {
-                println!("   ⚠️  Skipping duplicate itinerary: {}", itinerary.trip_name);
+                println!(
+                    "   ⚠️  Skipping duplicate itinerary: {}",
+                    itinerary.trip_name
+                );
                 continue;
             }
             seen_ids.insert(id);
         }
         let mut populated_days: HashMap<String, Vec<PopulatedDayItem>> = HashMap::new();
         let mut activity_summaries = Vec::new();
-        
+
         // Debug: Log itinerary details
-        println!("🔧 Processing itinerary: {} with {} days (match_score: {:?})", 
-            itinerary.trip_name, itinerary.days.days.len(), itinerary.match_score);
-        
+        println!(
+            "🔧 Processing itinerary: {} with {} days (match_score: {:?})",
+            itinerary.trip_name,
+            itinerary.days.days.len(),
+            itinerary.match_score
+        );
+
         // Collect all activity IDs
         let mut activity_ids = Vec::new();
         for (day_num, day_items) in &itinerary.days.days {
@@ -697,24 +870,47 @@ async fn transform_to_search_response(
                 match item {
                     crate::models::itinerary::base::DayItem::Activity { activity_id, time } => {
                         activity_ids.push(*activity_id);
-                        println!("      🎯 Item {}: Activity ID {} at {}", i+1, activity_id, time);
+                        println!(
+                            "      🎯 Item {}: Activity ID {} at {}",
+                            i + 1,
+                            activity_id,
+                            time
+                        );
                     }
-                    crate::models::itinerary::base::DayItem::Transportation { time, name, .. } => {
-                        println!("      🚗 Item {}: Transportation '{}' at {}", i+1, name, time);
+                    crate::models::itinerary::base::DayItem::Transportation {
+                        time, name, ..
+                    } => {
+                        println!(
+                            "      🚗 Item {}: Transportation '{}' at {}",
+                            i + 1,
+                            name,
+                            time
+                        );
                     }
-                    crate::models::itinerary::base::DayItem::Accommodation { time, accommodation_id } => {
-                        println!("      🏨 Item {}: Accommodation {} at {}", i+1, accommodation_id, time);
+                    crate::models::itinerary::base::DayItem::Accommodation {
+                        time,
+                        accommodation_id,
+                    } => {
+                        println!(
+                            "      🏨 Item {}: Accommodation {} at {}",
+                            i + 1,
+                            accommodation_id,
+                            time
+                        );
                     }
                 }
             }
         }
-        
+
         println!("Total activity IDs found: {}", activity_ids.len());
-        
+
         // Fetch all activities in one query
         let mut activities_map = HashMap::new();
         if !activity_ids.is_empty() {
-            println!("   🔍 Looking up {} activity IDs in database", activity_ids.len());
+            println!(
+                "   🔍 Looking up {} activity IDs in database",
+                activity_ids.len()
+            );
             let filter = doc! { "_id": { "$in": &activity_ids } };
             if let Ok(mut cursor) = activities_collection.find(filter).await {
                 let mut found_count = 0;
@@ -725,18 +921,22 @@ async fn transform_to_search_response(
                         println!("      ✅ Found activity: {} ({})", activity.title, id);
                     }
                 }
-                println!("   📊 Found {}/{} activities in database", found_count, activity_ids.len());
+                println!(
+                    "   📊 Found {}/{} activities in database",
+                    found_count,
+                    activity_ids.len()
+                );
             } else {
                 println!("   ❌ Failed to execute activity lookup query");
             }
         } else {
             println!("   ⚠️  No activity IDs to look up");
         }
-        
+
         // Transform days with populated activities
         for (day_num, day_items) in &itinerary.days.days {
             let mut populated_items = Vec::new();
-            
+
             for item in day_items {
                 match item {
                     crate::models::itinerary::base::DayItem::Activity { time, activity_id } => {
@@ -748,7 +948,7 @@ async fn transform_to_search_response(
                                 activity.clone(),
                             );
                             populated_items.push(populated_item);
-                            
+
                             // Add to activity summaries
                             activity_summaries.push(ActivitySummary {
                                 time: time.clone(),
@@ -757,7 +957,11 @@ async fn transform_to_search_response(
                             });
                         }
                     }
-                    crate::models::itinerary::base::DayItem::Transportation { time, location, name } => {
+                    crate::models::itinerary::base::DayItem::Transportation {
+                        time,
+                        location,
+                        name,
+                    } => {
                         populated_items.push(PopulatedDayItem::Transportation {
                             time: time.clone(),
                             location: serde_json::json!({
@@ -767,7 +971,10 @@ async fn transform_to_search_response(
                             name: name.clone(),
                         });
                     }
-                    crate::models::itinerary::base::DayItem::Accommodation { time, accommodation_id } => {
+                    crate::models::itinerary::base::DayItem::Accommodation {
+                        time,
+                        accommodation_id,
+                    } => {
                         populated_items.push(PopulatedDayItem::Accommodation {
                             time: time.clone(),
                             accommodation_id: *accommodation_id,
@@ -775,10 +982,10 @@ async fn transform_to_search_response(
                     }
                 }
             }
-            
+
             populated_days.insert(day_num.clone(), populated_items);
         }
-        
+
         // Create response item
         let response_item = SearchResponseItem {
             id: itinerary.id.unwrap_or_else(|| ObjectId::new()),
@@ -798,11 +1005,13 @@ async fn transform_to_search_response(
             days: populated_days,
             activities: activity_summaries,
             match_score: itinerary.match_score,
-            score_breakdown: itinerary.score_breakdown.map(|s| serde_json::to_value(s).unwrap_or(serde_json::Value::Null)),
+            score_breakdown: itinerary
+                .score_breakdown
+                .map(|s| serde_json::to_value(s).unwrap_or(serde_json::Value::Null)),
         };
-        
+
         response_items.push(response_item);
     }
-    
+
     response_items
 }

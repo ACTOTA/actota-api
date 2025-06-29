@@ -157,7 +157,11 @@ pub async fn get_favorites(
                                     
                                     for itinerary in featured_itineraries.clone() {
                                         match itinerary.populate(&client).await {
-                                            Ok(populated) => populated_itineraries.push(populated),
+                                            Ok(mut populated) => {
+                                                // Populate images from activities if no itinerary images exist
+                                                populated.populate_images_from_activities();
+                                                populated_itineraries.push(populated);
+                                            },
                                             Err(err) => {
                                                 eprintln!("Failed to populate itinerary: {:?}", err);
                                                 // Skip this itinerary if population fails

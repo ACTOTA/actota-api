@@ -298,4 +298,58 @@ impl PopulatedFeaturedVacation {
     pub fn set_service_fee(&mut self, fee: f32) {
         self.service_fee = Some(fee);
     }
+    
+    pub fn populate_images_from_activities(&mut self) {
+        // Check if itinerary already has images - only use activity images as fallback
+        let has_existing_images = self.base.images.as_ref().map_or(false, |imgs| !imgs.is_empty());
+        
+        println!("🔍 populate_images_from_activities called for '{}' - has_existing_images: {}", 
+                self.base.trip_name, has_existing_images);
+        
+        // Only populate from activities if no itinerary images exist
+        if !has_existing_images {
+            let mut activity_images = Vec::new();
+            
+            println!("📅 Processing {} days for activity images", self.populated_days.len());
+            
+            // Collect one image from each activity
+            for (day_key, day_items) in &self.populated_days {
+                println!("  Day '{}': {} items", day_key, day_items.len());
+                for (i, item) in day_items.iter().enumerate() {
+                    if let PopulatedDayItem::Activity { activity, .. } = item {
+                        println!("    Item {}: Activity '{}' - images: {:?}, primary: {:?}",
+                               i, activity.title, 
+                               activity.images.as_ref().map(|imgs| imgs.len()),
+                               activity.primary_image.as_ref().map(|_| "present"));
+                        
+                        // Get the first image from this activity
+                        if let Some(images) = &activity.images {
+                            if let Some(first_image) = images.first() {
+                                println!("      ✅ Added image from images array: {}", first_image);
+                                activity_images.push(first_image.clone());
+                            }
+                        }
+                        // Also try primary_image if no images array
+                        else if let Some(primary_image) = &activity.primary_image {
+                            println!("      ✅ Added primary image: {}", primary_image);
+                            activity_images.push(primary_image.clone());
+                        }
+                    } else {
+                        println!("    Item {}: Non-activity item", i);
+                    }
+                }
+            }
+            
+            if !activity_images.is_empty() {
+                println!("🎯 Populated {} images from activities for itinerary '{}'", activity_images.len(), self.base.trip_name);
+                self.base.images = Some(activity_images);
+            } else {
+                println!("⚠️  No activity images found for itinerary '{}'", self.base.trip_name);
+            }
+        } else {
+            let image_count = self.base.images.as_ref().map(|imgs| imgs.len()).unwrap_or(0);
+            println!("ℹ️  Itinerary '{}' already has {} image(s), skipping activity image fallback", 
+                   self.base.trip_name, image_count);
+        }
+    }
 }
